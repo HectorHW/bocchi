@@ -1,0 +1,7 @@
+[binary]
+path = "./samples/sample2.py"
+#interesting_codes = [20, 255]
+
+
+[stdin]
+limit = 512
