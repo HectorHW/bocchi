@@ -38,7 +38,7 @@ fn main() {
 
     let mut fuzzer = Fuzzer::new(
         RandomMutator {
-            generation_size: 100,
+            generation_size: 1000,
             sample_len_limit: config.stdin.unwrap().limit,
         },
         ExitCodeEvaluator::new(path),
