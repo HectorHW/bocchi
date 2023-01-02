@@ -203,6 +203,7 @@ dependencies = [
  "cursive",
  "exitcode",
  "itertools",
+ "lazy_static",
  "rand",
  "serde",
  "serde_derive",

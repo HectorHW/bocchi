@@ -1,6 +1,7 @@
+use lazy_static::lazy_static;
 use std::iter::repeat_with;
 
-use rand::{thread_rng, Rng};
+use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng, Rng};
 
 use crate::fuzzing::Generator;
 
@@ -17,12 +18,21 @@ enum Action {
     Replacement(usize),
 }
 
+lazy_static! {
+    static ref DECREASING_WEIGHTS_DIST: WeightedIndex<usize> =
+        WeightedIndex::new((1..=20).rev().map(|amount| amount * 3 / 2)).unwrap();
+}
+
 fn get_random_action(remaining_input: usize) -> Action {
     let mut rng = thread_rng();
+
+    let size = DECREASING_WEIGHTS_DIST.sample(&mut thread_rng());
+    let clipped_size = size.min(remaining_input);
+
     match rng.gen_range(0..3) {
-        0 => Action::Deletion(rng.gen_range(1..=remaining_input.min(20))),
-        1 => Action::Insertion(rng.gen_range(1..=20)),
-        2 => Action::Replacement(rng.gen_range(1..=remaining_input.min(20))),
+        0 => Action::Deletion(clipped_size),
+        1 => Action::Insertion(size),
+        2 => Action::Replacement(clipped_size),
         _ => unreachable!(),
     }
 }
