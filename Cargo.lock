@@ -90,6 +90,7 @@ dependencies = [
  "goblin",
  "itertools",
  "lazy_static",
+ "memfile",
  "proc-maps",
  "ptracer",
  "rand",
@@ -359,6 +360,15 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
+
+[[package]]
+name = "memfile"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28989c5dcae5625bb50871c6ab07e347f3dba0675d134eba4abaf57dc6cffdb7"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "memoffset"

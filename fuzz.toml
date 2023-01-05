@@ -4,4 +4,5 @@ path = "./samples/vuln"
 
 
 [stdin]
+pass_style = "stdin"
 limit = 100

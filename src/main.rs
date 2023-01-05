@@ -1,4 +1,6 @@
-use fuzzing::Fuzzer;
+use configuration::PassStyle;
+use execution::{PassViaFile, PassViaStdin};
+use fuzzing::{DynEval, Evaluator, Fuzzer};
 use itertools::Itertools;
 use ptracer::disable_aslr;
 use sample_generation::{random, RandomMutator};
@@ -49,13 +51,17 @@ fn main() {
         disable_aslr();
     }
 
-    let mut fuzzer = Fuzzer::new(
-        RandomMutator {
-            generation_size: 1000,
-            sample_len_limit: config.stdin.unwrap().limit,
-        },
-        execution::TraceEvaluator::new(mapping),
-    );
+    let generator = Box::new(RandomMutator {
+        generation_size: 1000,
+        sample_len_limit: config.stdin.as_ref().unwrap().limit,
+    });
+
+    let evaluator: DynEval<_, _> = if config.stdin.unwrap().pass_style == PassStyle::File {
+        Box::new(execution::TraceEvaluator::<PassViaFile>::new(mapping))
+    } else {
+        Box::new(execution::TraceEvaluator::<PassViaStdin>::new(mapping))
+    };
+    let mut fuzzer = Fuzzer::new(generator, evaluator);
 
     match fuzzer.add_to_library(random(5)) {
         Ok(_) => {}

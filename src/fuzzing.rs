@@ -55,20 +55,26 @@ pub struct GenerationRunResult<EvalResult> {
     pub new_codes: HashMap<EvalResult, StdinSample>,
 }
 
+pub type DynEval<EvalResult, Err> =
+    Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err> + 'static>;
+
+pub type DynGen<EvalResult> = Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>;
+
 impl<Err, EvalResult> Fuzzer<EvalResult, Err>
 where
     EvalResult: Sample,
     Err: std::error::Error,
 {
-    pub fn new<G, E>(generator: G, evaluator: E) -> Self
-    where
-        G: Generator<EvalResult, Item = StdinSample> + 'static,
-        E: Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err> + 'static,
-    {
+    pub fn new(
+        generator: Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>,
+        evaluator: Box<
+            dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err> + 'static,
+        >,
+    ) -> Self {
         Fuzzer {
-            sample_generator: Box::new(generator),
+            sample_generator: generator,
             library: vec![],
-            evaluator: Box::new(evaluator),
+            evaluator,
             unique_crashes: HashSet::new(),
         }
     }

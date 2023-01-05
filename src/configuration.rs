@@ -20,6 +20,20 @@ pub struct BinaryConfig {
 pub struct StdinFuzzingOptions {
     #[serde(default = "default_stdin_limit")]
     pub limit: usize,
+    pub pass_style: PassStyle,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PassStyle {
+    Stdin,
+    File,
+}
+
+impl Default for PassStyle {
+    fn default() -> Self {
+        PassStyle::Stdin
+    }
 }
 
 fn default_stdin_limit() -> usize {
