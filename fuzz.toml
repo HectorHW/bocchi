@@ -1,7 +1,7 @@
 [binary]
-path = "./samples/sample2.py"
+path = "./samples/vuln"
 #interesting_codes = [20, 255]
 
 
 [stdin]
-limit = 512
+limit = 100

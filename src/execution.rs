@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io::Write, process::Stdio};
+use std::{collections::HashSet, fmt::Display, io::Write, process::Stdio};
 
 use crate::fuzzing::{Evaluator, SampleData};
 
@@ -10,7 +10,7 @@ pub enum ExecutionError {
 
 pub struct ExitCodeEvaluator {
     binary: String,
-    seen_codes: HashSet<i32>,
+    seen_codes: HashSet<ExecResult>,
 }
 
 impl ExitCodeEvaluator {
@@ -22,14 +22,31 @@ impl ExitCodeEvaluator {
     }
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ExecResult {
+    Code(i32),
+    Signal,
+}
+
+impl Display for ExecResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecResult::Code(code) => write!(f, "code {code}"),
+            ExecResult::Signal => write!(f, "killed"),
+        }
+    }
+}
+
 impl Evaluator for ExitCodeEvaluator {
     type Item = Vec<u8>;
     type Error = ExecutionError;
 
+    type EvalResult = ExecResult;
+
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<crate::fuzzing::SampleData<Self::Item>, Self::Error> {
+    ) -> Result<crate::fuzzing::SampleData<Self::Item, Self::EvalResult>, Self::Error> {
         let mut process = std::process::Command::new(&self.binary)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
@@ -47,21 +64,25 @@ impl Evaluator for ExitCodeEvaluator {
 
         let exec_result = process.wait_with_output().unwrap();
 
-        let produced_code = exec_result.status.code().unwrap_or(-1);
+        let result = exec_result
+            .status
+            .code()
+            .map(ExecResult::Code)
+            .unwrap_or(ExecResult::Signal);
 
-        Ok(if self.seen_codes.contains(&produced_code) {
+        Ok(if self.seen_codes.contains(&result) {
             SampleData {
                 sample,
                 score: 0f64,
-                return_code: produced_code,
+                result,
             }
         } else {
-            self.seen_codes.insert(produced_code);
+            self.seen_codes.insert(result.clone());
 
             SampleData {
                 sample,
                 score: 1f64,
-                return_code: produced_code,
+                result,
             }
         })
     }

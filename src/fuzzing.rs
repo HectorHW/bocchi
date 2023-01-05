@@ -2,15 +2,19 @@ use std::collections::HashMap;
 
 use crate::execution::ExecutionError;
 
-pub trait Generator
+pub type OldEntries<S, E> = Vec<SampleData<S, E>>;
+pub type NewEntries<S> = Vec<S>;
+
+pub trait Generator<EvalResult>
 where
     Self::Item: Sized + Clone,
 {
     type Item;
+
     fn generate_samples(
         &mut self,
-        existing_population: Vec<SampleData<Self::Item>>,
-    ) -> (Vec<SampleData<Self::Item>>, Vec<Self::Item>);
+        existing_population: OldEntries<Self::Item, EvalResult>,
+    ) -> (OldEntries<Self::Item, EvalResult>, NewEntries<Self::Item>);
 }
 
 pub trait Evaluator
@@ -18,36 +22,44 @@ where
     Self::Item: Sized + Clone,
 {
     type Item;
+    type EvalResult;
     type Error;
 
-    fn score(&mut self, sample: Self::Item) -> Result<SampleData<Self::Item>, Self::Error>;
+    fn score(
+        &mut self,
+        sample: Self::Item,
+    ) -> Result<SampleData<Self::Item, Self::EvalResult>, Self::Error>;
 }
 
-pub struct SampleData<Sample> {
+pub struct SampleData<Sample, EvalResult> {
     pub sample: Sample,
+    pub result: EvalResult,
     pub score: f64,
-    pub return_code: i32,
 }
 
 pub type StdinSample = Vec<u8>;
 
-pub struct Fuzzer {
-    sample_generator: Box<dyn Generator<Item = StdinSample>>,
-    pub library: Vec<SampleData<StdinSample>>,
-    evaluator: Box<dyn Evaluator<Item = StdinSample, Error = ExecutionError>>,
+pub struct Fuzzer<EvalResult> {
+    sample_generator: Box<dyn Generator<EvalResult, Item = StdinSample>>,
+    pub library: Vec<SampleData<StdinSample, EvalResult>>,
+    evaluator:
+        Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = ExecutionError>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GenerationRunResult {
-    pub statuses: HashMap<i32, usize>,
-    pub new_codes: HashMap<i32, StdinSample>,
+pub struct GenerationRunResult<EvalResult> {
+    pub statuses: HashMap<EvalResult, usize>,
+    pub new_codes: HashMap<EvalResult, StdinSample>,
 }
 
-impl Fuzzer {
+impl<EvalResult> Fuzzer<EvalResult>
+where
+    EvalResult: std::hash::Hash + Clone + Eq,
+{
     pub fn new<G, E>(generator: G, evaluator: E) -> Self
     where
-        G: Generator<Item = StdinSample> + 'static,
-        E: Evaluator<Item = StdinSample, Error = ExecutionError> + 'static,
+        G: Generator<EvalResult, Item = StdinSample> + 'static,
+        E: Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = ExecutionError> + 'static,
     {
         Fuzzer {
             sample_generator: Box::new(generator),
@@ -62,7 +74,7 @@ impl Fuzzer {
         Ok(())
     }
 
-    pub fn run_generation(&mut self) -> Result<GenerationRunResult, ExecutionError> {
+    pub fn run_generation(&mut self) -> Result<GenerationRunResult<EvalResult>, ExecutionError> {
         let mut library = vec![];
 
         std::mem::swap(&mut library, &mut self.library);
@@ -74,15 +86,15 @@ impl Fuzzer {
             .map(|sample| self.evaluator.score(sample))
             .collect::<Result<Vec<_>, ExecutionError>>()?;
 
-        let mut stats: HashMap<i32, usize> = HashMap::new();
+        let mut stats: HashMap<EvalResult, usize> = HashMap::new();
 
-        let mut new_codes: HashMap<i32, StdinSample> = Default::default();
+        let mut new_codes: HashMap<EvalResult, StdinSample> = Default::default();
 
         for item in &scored {
-            *stats.entry(item.return_code).or_default() += 1;
+            *stats.entry(item.result.clone()).or_default() += 1;
 
             if item.score > 0f64 {
-                new_codes.insert(item.return_code, item.sample.clone());
+                new_codes.insert(item.result.clone(), item.sample.clone());
             }
         }
 

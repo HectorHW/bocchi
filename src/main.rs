@@ -7,6 +7,7 @@ use sample_generation::{random, RandomMutator};
 
 use crate::configuration::{load_config, ConfigReadError};
 
+mod analysys;
 mod configuration;
 mod execution;
 mod fuzzing;
@@ -24,7 +25,7 @@ fn main() {
     let config = match load_config("fuzz.toml") {
         Ok(config) => config,
         Err(ConfigReadError::ReadError(e)) => {
-            eprintln!("{e}");
+            eprintln!("failed to read fuzz.toml: {e}");
             process::exit(exitcode::IOERR)
         }
 
@@ -62,13 +63,13 @@ fn main() {
         };
 
         println!("generation result:");
-        for (&code, count) in &exec_status.statuses {
+        for (code, count) in &exec_status.statuses {
             println!("{code: >7}: {count}");
         }
 
         for (new_code, sample) in exec_status.new_codes {
             println!("found new interesting sample");
-            println!("    code: {new_code}");
+            println!("    run result: {new_code}");
             println!("    sample: {}", print_input(&sample));
         }
     }

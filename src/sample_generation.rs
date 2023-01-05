@@ -102,13 +102,16 @@ pub struct RandomMutator {
     pub sample_len_limit: usize,
 }
 
-impl Generator for RandomMutator {
+impl<EvalResult> Generator<EvalResult> for RandomMutator {
     type Item = Vec<u8>;
 
     fn generate_samples(
         &mut self,
-        mut existing_population: Vec<crate::fuzzing::SampleData<Self::Item>>,
-    ) -> (Vec<crate::fuzzing::SampleData<Self::Item>>, Vec<Self::Item>) {
+        mut existing_population: Vec<crate::fuzzing::SampleData<Self::Item, EvalResult>>,
+    ) -> (
+        Vec<crate::fuzzing::SampleData<Self::Item, EvalResult>>,
+        Vec<Self::Item>,
+    ) {
         assert!(!existing_population.is_empty());
 
         existing_population.truncate(self.generation_size);
