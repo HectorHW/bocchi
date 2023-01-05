@@ -1,10 +1,8 @@
-use std::process;
-
-use execution::{ExitCodeEvaluator, TraceEvaluator};
 use fuzzing::Fuzzer;
 use itertools::Itertools;
 use ptracer::disable_aslr;
 use sample_generation::{random, RandomMutator};
+use std::process;
 
 use crate::configuration::{load_config, ConfigReadError};
 
@@ -56,7 +54,7 @@ fn main() {
             generation_size: 1000,
             sample_len_limit: config.stdin.unwrap().limit,
         },
-        TraceEvaluator::new(mapping),
+        execution::TraceEvaluator::new(mapping),
     );
 
     match fuzzer.add_to_library(random(5)) {
