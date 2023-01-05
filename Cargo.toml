@@ -16,4 +16,4 @@ serde_derive = "1.0.152"
 thiserror = "1.0.38"
 toml = "0.5.10"
 
-ptracer = { path = "../ptracer" }
+ptracer = { git = "https://github.com/HectorHW/ptracer.git" }

@@ -214,6 +214,7 @@ dependencies = [
 [[package]]
 name = "ptracer"
 version = "0.3.2"
+source = "git+https://github.com/HectorHW/ptracer.git#821a1c36e919509e0d1cdafe4855c3f9600cacdc"
 dependencies = [
  "cfg-if",
  "libc",
