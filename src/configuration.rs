@@ -57,8 +57,8 @@ pub enum ConfigReadError {
     ParseError(toml::de::Error),
 }
 
-pub fn load_config(path: &str) -> Result<FuzzConfig, ConfigReadError> {
-    let config = std::fs::read_to_string("fuzz.toml").map_err(ConfigReadError::ReadError)?;
+pub fn load_config<P: AsRef<std::path::Path>>(path: P) -> Result<FuzzConfig, ConfigReadError> {
+    let config = std::fs::read_to_string(path).map_err(ConfigReadError::ReadError)?;
 
     toml::from_str::<FuzzConfig>(&config).map_err(ConfigReadError::ParseError)
 }
