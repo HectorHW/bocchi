@@ -133,16 +133,27 @@ fn determine_offset(child: &Child) -> std::io::Result<usize> {
     Ok(maps[0].start())
 }
 
-fn pass_input<F: std::io::Write>(mut file: F, input: &[u8]) -> Result<F, std::io::Error> {
-    file.write_all(input)?;
-    file.flush()?;
-    Ok(file)
-}
-
 pub trait InputPassStyle: Sized {
     fn make_command<P: AsRef<OsStr>>(exec_path: P, obj: &mut FunctionTracer<Self>) -> Command;
 
     fn get_file(obj: &mut FunctionTracer<Self>, tracer: &mut Ptracer) -> Box<dyn Write>;
+
+    /// Indicates if file should be closed (true) or held until execution is finished
+    fn should_close() -> bool;
+
+    fn pass_input<F: std::io::Write>(
+        mut file: F,
+        input: &[u8],
+    ) -> Result<Option<F>, std::io::Error> {
+        file.write_all(input)?;
+        file.flush()?;
+        if Self::should_close() {
+            drop(file);
+            Ok(None)
+        } else {
+            Ok(Some(file))
+        }
+    }
 }
 
 pub struct PassViaStdin {}
@@ -176,6 +187,10 @@ impl InputPassStyle for PassViaFile {
     fn get_file(obj: &mut FunctionTracer<Self>, _tracer: &mut Ptracer) -> Box<dyn Write> {
         Box::new(obj.pass_style.file.take().unwrap())
     }
+
+    fn should_close() -> bool {
+        false
+    }
 }
 impl InputPassStyle for PassViaStdin {
     fn make_command<P: AsRef<OsStr>>(
@@ -193,6 +208,10 @@ impl InputPassStyle for PassViaStdin {
 
     fn get_file(_obj: &mut FunctionTracer<Self>, tracer: &mut Ptracer) -> Box<dyn Write> {
         Box::new(tracer.child_mut().stdin.take().unwrap())
+    }
+
+    fn should_close() -> bool {
+        true
     }
 }
 
@@ -234,7 +253,7 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 
         self.set_breakpoints(&mut tracer)?;
 
-        let file = pass_input(S::get_file(self, &mut tracer), input)?;
+        let _maybe_needs_hold = S::pass_input(S::get_file(self, &mut tracer), input)?;
 
         let mut trajectory = vec![];
 
