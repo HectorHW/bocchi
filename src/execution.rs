@@ -54,14 +54,13 @@ impl Display for ExecResult {
 
 impl Evaluator for ExitCodeEvaluator {
     type Item = Vec<u8>;
-    type Error = ExecutionError;
 
     type EvalResult = ExecResult;
 
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<crate::fuzzing::SampleData<Self::Item, Self::EvalResult>, Self::Error> {
+    ) -> Result<crate::fuzzing::SampleData<Self::Item, Self::EvalResult>, anyhow::Error> {
         let mut process = std::process::Command::new(&self.binary)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
@@ -286,12 +285,10 @@ impl<S: InputPassStyle> Evaluator for TraceEvaluator<S> {
 
     type EvalResult = RunTrace;
 
-    type Error = TraceError;
-
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<SampleData<Self::Item, Self::EvalResult>, Self::Error> {
+    ) -> Result<SampleData<Self::Item, Self::EvalResult>, anyhow::Error> {
         let result = self.tracer.run(&sample)?;
 
         Ok(if self.seen_errors.contains_key(&result) {

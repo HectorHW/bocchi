@@ -56,7 +56,7 @@ fn main() {
         sample_len_limit: config.stdin.as_ref().unwrap().limit,
     });
 
-    let evaluator: DynEval<_, _> = if config.stdin.unwrap().pass_style == PassStyle::File {
+    let evaluator: DynEval<_> = if config.stdin.unwrap().pass_style == PassStyle::File {
         Box::new(execution::TraceEvaluator::<PassViaFile>::new(mapping))
     } else {
         Box::new(execution::TraceEvaluator::<PassViaStdin>::new(mapping))

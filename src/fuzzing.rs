@@ -18,16 +18,14 @@ where
 pub trait Evaluator
 where
     Self::Item: Sized + Clone,
-    Self::Error: std::error::Error,
 {
     type Item;
     type EvalResult;
-    type Error;
 
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<SampleData<Self::Item, Self::EvalResult>, Self::Error>;
+    ) -> Result<SampleData<Self::Item, Self::EvalResult>, anyhow::Error>;
 }
 
 pub struct SampleData<Sample, EvalResult> {
@@ -42,10 +40,10 @@ pub trait Sample: std::hash::Hash + Clone + Eq {}
 
 impl Sample for StdinSample {}
 
-pub struct Fuzzer<EvalResult, Err> {
+pub struct Fuzzer<EvalResult> {
     sample_generator: Box<dyn Generator<EvalResult, Item = StdinSample>>,
     pub library: Vec<SampleData<StdinSample, EvalResult>>,
-    evaluator: Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err>>,
+    evaluator: Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult>>,
     unique_crashes: HashSet<EvalResult>,
 }
 
@@ -55,21 +53,18 @@ pub struct GenerationRunResult<EvalResult> {
     pub new_codes: HashMap<EvalResult, StdinSample>,
 }
 
-pub type DynEval<EvalResult, Err> =
-    Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err> + 'static>;
+pub type DynEval<EvalResult> =
+    Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult> + 'static>;
 
 pub type DynGen<EvalResult> = Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>;
 
-impl<Err, EvalResult> Fuzzer<EvalResult, Err>
+impl<EvalResult> Fuzzer<EvalResult>
 where
     EvalResult: Sample,
-    Err: std::error::Error,
 {
     pub fn new(
         generator: Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>,
-        evaluator: Box<
-            dyn Evaluator<Item = StdinSample, EvalResult = EvalResult, Error = Err> + 'static,
-        >,
+        evaluator: Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult> + 'static>,
     ) -> Self {
         Fuzzer {
             sample_generator: generator,
@@ -79,13 +74,13 @@ where
         }
     }
 
-    pub fn add_to_library(&mut self, sample: StdinSample) -> Result<(), Err> {
+    pub fn add_to_library(&mut self, sample: StdinSample) -> Result<(), anyhow::Error> {
         let scored = self.evaluator.score(sample)?;
         self.library.push(scored);
         Ok(())
     }
 
-    pub fn run_generation(&mut self) -> Result<GenerationRunResult<EvalResult>, Err> {
+    pub fn run_generation(&mut self) -> Result<GenerationRunResult<EvalResult>, anyhow::Error> {
         let mut library = vec![];
 
         std::mem::swap(&mut library, &mut self.library);
@@ -95,7 +90,7 @@ where
         let mut scored = new_samples
             .into_iter()
             .map(|sample| self.evaluator.score(sample))
-            .collect::<Result<Vec<_>, Err>>()?;
+            .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
         let mut stats: HashMap<EvalResult, usize> = HashMap::new();
 
