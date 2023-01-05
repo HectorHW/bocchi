@@ -5,7 +5,15 @@ use serde_derive::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 pub struct FuzzConfig {
     pub binary: BinaryConfig,
-    pub stdin: Option<StdinFuzzingOptions>,
+
+    #[serde(default)]
+    pub stdin: StdinFuzzingOptions,
+
+    #[serde(default)]
+    pub generation: GenerationOptions,
+
+    #[serde(default)]
+    pub seeds: SeedOptions,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -16,10 +24,8 @@ pub struct BinaryConfig {
     pub interesting_codes: ExitCodeFilter,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
 pub struct StdinFuzzingOptions {
-    #[serde(default = "default_stdin_limit")]
-    pub limit: usize,
     pub pass_style: PassStyle,
 }
 
@@ -34,6 +40,37 @@ impl Default for PassStyle {
     fn default() -> Self {
         PassStyle::Stdin
     }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GenerationOptions {
+    #[serde(default = "default_population_size")]
+    pub population: usize,
+    #[serde(default = "default_sample_limit")]
+    pub sample_limit: usize,
+}
+
+impl Default for GenerationOptions {
+    fn default() -> Self {
+        Self {
+            population: default_population_size(),
+            sample_limit: default_sample_limit(),
+        }
+    }
+}
+
+fn default_population_size() -> usize {
+    1_000
+}
+
+fn default_sample_limit() -> usize {
+    100
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct SeedOptions {
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 fn default_stdin_limit() -> usize {

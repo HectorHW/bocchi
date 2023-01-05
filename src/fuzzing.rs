@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::execution::RunTrace;
+
 pub type OldEntries<S, E> = Vec<SampleData<S, E>>;
 pub type NewEntries<S> = Vec<S>;
 
@@ -74,10 +76,29 @@ where
         }
     }
 
-    pub fn add_to_library(&mut self, sample: StdinSample) -> Result<(), anyhow::Error> {
+    fn is_new(&self, data: &EvalResult) -> bool {
+        self.unique_crashes.contains(data)
+    }
+
+    fn record_new_crash(&mut self, data: &EvalResult) -> bool {
+        self.unique_crashes.insert(data.clone())
+    }
+
+    pub fn add_to_library(
+        &mut self,
+        sample: StdinSample,
+    ) -> Result<Option<EvalResult>, anyhow::Error> {
         let scored = self.evaluator.score(sample)?;
+
+        let result = if self.record_new_crash(&scored.result) {
+            Some(scored.result.clone())
+        } else {
+            None
+        };
+
         self.library.push(scored);
-        Ok(())
+
+        Ok(result)
     }
 
     pub fn run_generation(&mut self) -> Result<GenerationRunResult<EvalResult>, anyhow::Error> {
@@ -99,8 +120,7 @@ where
         for item in &scored {
             *stats.entry(item.result.clone()).or_default() += 1;
 
-            if !self.unique_crashes.contains(&item.result) {
-                self.unique_crashes.insert(item.result.clone());
+            if self.record_new_crash(&item.result) {
                 new_results.insert(item.result.clone(), item.sample.clone());
             }
         }

@@ -133,8 +133,10 @@ fn determine_offset(child: &Child) -> std::io::Result<usize> {
     Ok(maps[0].start())
 }
 
-fn pass_input<F: std::io::Write>(mut file: F, input: &[u8]) -> Result<(), std::io::Error> {
-    file.write_all(input)
+fn pass_input<F: std::io::Write>(mut file: F, input: &[u8]) -> Result<F, std::io::Error> {
+    file.write_all(input)?;
+    file.flush()?;
+    Ok(file)
 }
 
 pub trait InputPassStyle: Sized {
@@ -222,7 +224,9 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 
     pub fn run(&mut self, input: &[u8]) -> Result<RunTrace, TraceError> {
         let path = self.binary.path.clone();
-        let mut tracer = Ptracer::spawn(S::make_command(path, self), None)?;
+        let cmd = S::make_command(path, self);
+
+        let mut tracer = Ptracer::spawn(cmd, None)?;
 
         if self.binary.base_offset.is_none() {
             self.binary.base_offset = Some(determine_offset(tracer.child())?);
@@ -230,7 +234,7 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 
         self.set_breakpoints(&mut tracer)?;
 
-        pass_input(S::get_file(self, &mut tracer), input)?;
+        let file = pass_input(S::get_file(self, &mut tracer), input)?;
 
         let mut trajectory = vec![];
 
