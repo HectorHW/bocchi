@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AnalysysError {
@@ -12,17 +12,19 @@ pub enum AnalysysError {
     FileFormat(String),
 }
 
-pub struct Binary {
+pub struct ElfInfo {
     pub functions: Vec<Function>,
+    pub path: PathBuf,
+    pub base_offset: Option<usize>,
 }
 
 pub struct Function {
-    name: String,
-    offset: usize,
+    pub name: String,
+    pub offset: usize,
 }
 
-pub fn analyze_binary<P: AsRef<Path>>(path: P) -> Result<Binary, AnalysysError> {
-    let binary_data = std::fs::read(path)?;
+pub fn analyze_binary<P: AsRef<Path>>(path: P) -> Result<ElfInfo, AnalysysError> {
+    let binary_data = std::fs::read(&path)?;
 
     let elf = match goblin::Object::parse(&binary_data)? {
         goblin::Object::Elf(elf) => elf,
@@ -59,5 +61,9 @@ pub fn analyze_binary<P: AsRef<Path>>(path: P) -> Result<Binary, AnalysysError> 
         })
         .collect();
 
-    Ok(Binary { functions })
+    Ok(ElfInfo {
+        functions,
+        path: path.as_ref().to_path_buf(),
+        base_offset: None,
+    })
 }

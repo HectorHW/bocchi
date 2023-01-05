@@ -1,8 +1,9 @@
 use std::process;
 
-use execution::ExitCodeEvaluator;
+use execution::{ExitCodeEvaluator, TraceEvaluator};
 use fuzzing::Fuzzer;
 use itertools::Itertools;
+use ptracer::disable_aslr;
 use sample_generation::{random, RandomMutator};
 
 use crate::configuration::{load_config, ConfigReadError};
@@ -37,12 +38,25 @@ fn main() {
 
     let path = config.binary.path.clone();
 
+    let mapping = match analysys::analyze_binary(&path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error analyzing binary for trace evaluator");
+            eprintln!("error: {e}");
+            process::exit(exitcode::DATAERR)
+        }
+    };
+
+    unsafe {
+        disable_aslr();
+    }
+
     let mut fuzzer = Fuzzer::new(
         RandomMutator {
             generation_size: 1000,
             sample_len_limit: config.stdin.unwrap().limit,
         },
-        ExitCodeEvaluator::new(path),
+        TraceEvaluator::new(mapping),
     );
 
     match fuzzer.add_to_library(random(5)) {
@@ -53,7 +67,10 @@ fn main() {
         }
     };
 
+    let mut gen = 0;
+
     loop {
+        gen += 1;
         let exec_status = match fuzzer.run_generation() {
             Ok(s) => s,
             Err(e) => {
@@ -62,15 +79,17 @@ fn main() {
             }
         };
 
-        println!("generation result:");
-        for (code, count) in &exec_status.statuses {
-            println!("{code: >7}: {count}");
-        }
+        println!("running generation {gen}");
 
         for (new_code, sample) in exec_status.new_codes {
             println!("found new interesting sample");
-            println!("    run result: {new_code}");
+            println!(
+                "    run result: {} functions, exit: {}",
+                new_code.trajectory.len(),
+                new_code.result
+            );
             println!("    sample: {}", print_input(&sample));
+            println!("trajectory: {:?}", new_code.trajectory)
         }
     }
 }
