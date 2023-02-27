@@ -73,10 +73,6 @@ pub struct SeedOptions {
     pub path: Option<String>,
 }
 
-fn default_stdin_limit() -> usize {
-    10_000
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ExitCodeFilter {
