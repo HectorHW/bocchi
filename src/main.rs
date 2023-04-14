@@ -6,10 +6,7 @@ use ptracer::disable_aslr;
 use seeding::read_seeds;
 use std::process;
 
-use crate::{
-    configuration::{load_config, ConfigReadError},
-    generation::Generator,
-};
+use crate::configuration::{load_config, ConfigReadError};
 
 mod analysys;
 mod configuration;
@@ -38,8 +35,6 @@ fn main() {
         let parsed = crate::grammar::grammar_parser::grammar(
             &std::fs::read_to_string("input.grammar").unwrap(),
         );
-
-        //println!("{parsed:?}");
 
         let generator = crate::generation::Generator::new(parsed.unwrap(), 20);
 

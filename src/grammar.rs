@@ -1,3 +1,5 @@
+use rand_regex::Regex;
+
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -5,6 +7,7 @@ pub enum Token {
     Identifier(String),
     String(String),
     Hex(Vec<u8>),
+    Regex(Regex),
 }
 
 pub type ProductionRhs = Vec<Token>;
@@ -16,6 +19,12 @@ pub struct Production {
 }
 
 pub type Grammar = HashMap<String, Vec<ProductionRhs>>;
+
+fn compile_regex(s: &str, size_limit: u32) -> Result<Regex, &'static str> {
+    let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
+    let hir = parser.parse(s).map_err(|_| "error compiling regex")?;
+    Ok(rand_regex::Regex::with_hir(hir, size_limit).unwrap())
+}
 
 peg::parser! {
 
@@ -49,10 +58,30 @@ peg::parser! {
                 s.to_string()
             }
 
+        rule number() -> u32 =
+            s:$(['0'..='9']+) {
+                s.parse().unwrap()
+            }
+
+        rule regex() -> Regex =
+            "re" _ "(" _ s: string() _ "," _ size: number() _ ")" {?
+                compile_regex(&s, size)
+            }/
+
+            "re" _ "(" _ s:string() _ ")" {?
+                compile_regex(&s, 100)
+            }
+
+
+
         rule token() -> Token =
             "Nothing" {
                 Token::String("".to_string())
             }/
+            r: regex() {
+                Token::Regex(r)
+            }/
+
             i:identifier() {
                 Token::Identifier(i.to_string())
             }/

@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use rand::Rng;
+use rand_regex::Regex;
 
 use crate::grammar::{Grammar, Token};
 
@@ -14,6 +15,7 @@ pub enum TreeNode {
     ProductionApplication(ProductionApplication),
     String(String),
     HexString(Vec<u8>),
+    Regex(String),
 }
 
 impl TreeNode {
@@ -29,6 +31,9 @@ impl TreeNode {
             }
             TreeNode::HexString(s) => {
                 buffer.write_all(s).unwrap();
+            }
+            TreeNode::Regex(re) => {
+                buffer.write_all(re.as_bytes()).unwrap();
             }
         }
     }
@@ -46,12 +51,10 @@ pub struct Generator {
 
 impl Generator {
     pub fn new(grammar: Grammar, depth_limit: usize) -> Generator {
-        let rng = rand::thread_rng();
-
-        return Generator {
+        Generator {
             grammar,
             depth_limit,
-        };
+        }
     }
 
     pub fn generate(&self) -> Sample {
@@ -69,16 +72,23 @@ impl Generator {
 
     fn generate_token(&self, token: &Token, remaining_depth: usize) -> Result<TreeNode, ()> {
         match token {
-            crate::grammar::Token::Identifier(i) => {
+            Token::Identifier(i) => {
                 if remaining_depth == 0 {
                     Err(())
                 } else {
                     self.generate_production(i, remaining_depth - 1)
                 }
             }
-            crate::grammar::Token::String(s) => Ok(TreeNode::String(s.clone())),
-            crate::grammar::Token::Hex(h) => Ok(TreeNode::HexString(h.clone())),
+            Token::String(s) => Ok(TreeNode::String(s.clone())),
+            Token::Hex(h) => Ok(TreeNode::HexString(h.clone())),
+
+            Token::Regex(re) => Ok(TreeNode::Regex(self.generate_regex(re))),
         }
+    }
+
+    fn generate_regex(&self, regex: &Regex) -> String {
+        let mut rng = rand::thread_rng();
+        rng.sample(regex)
     }
 
     fn generate_production(
