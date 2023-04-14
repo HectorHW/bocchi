@@ -18,7 +18,11 @@ pub struct Production {
     pub rhs: Vec<ProductionRhs>,
 }
 
-pub type Grammar = HashMap<String, Vec<ProductionRhs>>;
+pub struct Grammar {
+    pub options: HashMap<String, String>,
+
+    pub productions: HashMap<String, Vec<ProductionRhs>>,
+}
 
 fn compile_regex(s: &str, size_limit: u32) -> Result<Regex, &'static str> {
     let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
@@ -29,6 +33,23 @@ fn compile_regex(s: &str, size_limit: u32) -> Result<Regex, &'static str> {
 peg::parser! {
 
     pub grammar grammar_parser() for str {
+
+        rule flag() -> (String, String) =
+            key:identifier() _ "=" _ value: flag_value() {
+                (key, value)
+            }
+
+        rule flag_value() -> String =
+            string()
+            /
+            n:number() {
+                n.to_string()
+            }
+
+        rule flags() -> HashMap<String, String> =
+            f:flag()**_ {
+                f.into_iter().collect()
+            }
 
         rule hexstring() -> Vec<u8> =
             "0x" hexblock:$(['0'..='9'|'a'..='f'|'A'..='F']+) {?
@@ -64,14 +85,13 @@ peg::parser! {
             }
 
         rule regex() -> Regex =
-            "re" _ "(" _ s: string() _ "," _ size: number() _ ")" {?
-                compile_regex(&s, size)
-            }/
+            "re" _ "(" _ s: string() _ f: flags() _ ")" {?
 
-            "re" _ "(" _ s:string() _ ")" {?
-                compile_regex(&s, 100)
+                let limit = f.get("size_limit")
+                .map(|v| v.parse().map_err(|_| "error parsing number when reading regex size_limit flag")).unwrap_or(Ok(100))?;
+
+                compile_regex(&s, limit)
             }
-
 
 
         rule token() -> Token =
@@ -107,8 +127,10 @@ peg::parser! {
             }
 
         pub rule grammar() -> Grammar =
-            gram: production()+ {
-                gram.into_iter().map(|p| (p.lhs, p.rhs)).collect()
+            _ f:flags() _
+            prods: production()+ _ {
+                Grammar{ options: f, productions: prods.into_iter().map(|p| (p.lhs, p.rhs)).collect() }
+
             }
 
 

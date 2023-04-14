@@ -6,14 +6,13 @@ use serde_derive::Deserialize;
 pub struct FuzzConfig {
     pub binary: BinaryConfig,
 
+    pub grammar: GrammarOptions,
+
     #[serde(default)]
     pub stdin: StdinFuzzingOptions,
 
     #[serde(default)]
     pub generation: GenerationOptions,
-
-    #[serde(default)]
-    pub seeds: SeedOptions,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -22,6 +21,11 @@ pub struct BinaryConfig {
 
     #[serde(default)]
     pub interesting_codes: ExitCodeFilter,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GrammarOptions {
+    pub path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]

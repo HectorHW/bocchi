@@ -96,7 +96,7 @@ impl Generator {
         current_production: &str,
         remaining_depth: usize,
     ) -> Result<TreeNode, ()> {
-        let productions = self.grammar.get(current_production).unwrap_or_else(|| {
+        let productions = self.grammar.productions.get(current_production).unwrap_or_else(|| {
             panic!("could not find production rule with name `{current_production}` in supplied grammar during generation")
         });
 

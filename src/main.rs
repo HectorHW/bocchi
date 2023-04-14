@@ -86,33 +86,6 @@ fn main() {
     };
     let mut fuzzer = Fuzzer::new(generator, evaluator);
 
-    let seeds = if let Some(dir) = config.seeds.path {
-        match read_seeds(&dir) {
-            Ok(s) => {
-                println!("read {} seeds", s.len());
-                s
-            }
-            Err(e) => {
-                eprintln!("failed to read seeds directory: {e}");
-                process::exit(exitcode::DATAERR);
-            }
-        }
-    } else {
-        println!("no seed dir provided, seeding with single entry of five random bytes");
-        vec![random(5)]
-    };
-
-    for seed in seeds {
-        match fuzzer.add_to_library(seed) {
-            Ok(Some(new)) => report_run(new),
-            Ok(None) => {}
-            Err(e) => {
-                eprintln!("error executing : {e:?}");
-                process::exit(exitcode::NOPERM);
-            }
-        };
-    }
-
     let mut gen = 0;
 
     loop {
