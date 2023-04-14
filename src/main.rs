@@ -1,27 +1,23 @@
 use configuration::PassStyle;
 use execution::{PassViaFile, PassViaStdin, RunTrace};
 use fuzzing::{DynEval, Fuzzer};
-use itertools::Itertools;
+use mutation::{random, RandomMutator};
 use ptracer::disable_aslr;
-use sample_generation::{random, RandomMutator};
 use seeding::read_seeds;
 use std::process;
 
-use crate::configuration::{load_config, ConfigReadError};
+use crate::{
+    configuration::{load_config, ConfigReadError},
+    generation::Generator,
+};
 
 mod analysys;
 mod configuration;
 mod execution;
 mod fuzzing;
-mod sample_generation;
-
-fn print_input(data: &[u8]) -> String {
-    format!(
-        "{} [{}]",
-        data.iter().map(|digit| format!("{digit:02x}")).join(" "),
-        String::from_utf8_lossy(data)
-    )
-}
+mod generation;
+mod grammar;
+mod mutation;
 
 fn report_run(new_code: RunTrace) {
     println!("found new interesting sample");
@@ -38,6 +34,23 @@ fn report_run(new_code: RunTrace) {
 mod seeding;
 
 fn main() {
+    {
+        let parsed = crate::grammar::grammar_parser::grammar(
+            &std::fs::read_to_string("input.grammar").unwrap(),
+        );
+
+        //println!("{parsed:?}");
+
+        let generator = crate::generation::Generator::new(parsed.unwrap(), 20);
+
+        for _ in 0..10 {
+            let result = generator.generate();
+            println!("{}", String::from_utf8_lossy(&result.folded))
+        }
+
+        return;
+    }
+
     let config = match load_config("fuzz.toml") {
         Ok(config) => config,
         Err(ConfigReadError::ReadError(e)) => {

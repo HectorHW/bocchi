@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::execution::RunTrace;
-
 pub type OldEntries<S, E> = Vec<SampleData<S, E>>;
 pub type NewEntries<S> = Vec<S>;
 
