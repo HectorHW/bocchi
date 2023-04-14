@@ -2,6 +2,8 @@ use rand_regex::Regex;
 
 use std::collections::HashMap;
 
+use crate::flags::{FlagValue, Flags};
+
 #[derive(Clone, Debug)]
 pub enum Token {
     Identifier(String),
@@ -19,13 +21,15 @@ pub struct Production {
 }
 
 pub struct Grammar {
-    pub options: HashMap<String, String>,
+    pub options: Flags,
 
     pub productions: HashMap<String, Vec<ProductionRhs>>,
 }
 
-fn compile_regex(s: &str, size_limit: u32) -> Result<Regex, &'static str> {
-    let mut parser = regex_syntax::ParserBuilder::new().unicode(false).build();
+fn compile_regex(s: &str, size_limit: u32, unicode: u32) -> Result<Regex, &'static str> {
+    let mut parser = regex_syntax::ParserBuilder::new()
+        .unicode(unicode != 0)
+        .build();
     let hir = parser.parse(s).map_err(|_| "error compiling regex")?;
     Ok(rand_regex::Regex::with_hir(hir, size_limit).unwrap())
 }
@@ -34,21 +38,23 @@ peg::parser! {
 
     pub grammar grammar_parser() for str {
 
-        rule flag() -> (String, String) =
+        rule flag() -> (String, FlagValue) =
             key:identifier() _ "=" _ value: flag_value() {
                 (key, value)
             }
 
-        rule flag_value() -> String =
-            string()
+        rule flag_value() -> FlagValue =
+            s:string() {
+                s.into()
+            }
             /
             n:number() {
-                n.to_string()
+                n.into()
             }
 
-        rule flags() -> HashMap<String, String> =
+        rule flags() -> Flags =
             f:flag()**_ {
-                f.into_iter().collect()
+                Flags::new(f.into_iter().collect())
             }
 
         rule hexstring() -> Vec<u8> =
@@ -87,10 +93,10 @@ peg::parser! {
         rule regex() -> Regex =
             "re" _ "(" _ s: string() _ f: flags() _ ")" {?
 
-                let limit = f.get("size_limit")
-                .map(|v| v.parse().map_err(|_| "error parsing number when reading regex size_limit flag")).unwrap_or(Ok(100))?;
+                let limit = f.get_int("size_limit").unwrap_or(Ok(100)).map_err(|_| "size_limit should be int field")?;
+                let unicode = f.get_int("unicode").unwrap_or(Ok(0)).map_err(|_| "unicode should be int field")?;
 
-                compile_regex(&s, limit)
+                compile_regex(&s, limit, unicode)
             }
 
 

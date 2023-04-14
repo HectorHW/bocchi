@@ -3,7 +3,6 @@ use execution::{PassViaFile, PassViaStdin, RunTrace};
 use fuzzing::{DynEval, Fuzzer};
 use mutation::{random, RandomMutator};
 use ptracer::disable_aslr;
-use seeding::read_seeds;
 use std::process;
 
 use crate::configuration::{load_config, ConfigReadError};
@@ -11,6 +10,7 @@ use crate::configuration::{load_config, ConfigReadError};
 mod analysys;
 mod configuration;
 mod execution;
+mod flags;
 mod fuzzing;
 mod generation;
 mod grammar;
@@ -27,8 +27,6 @@ fn report_run(new_code: RunTrace) {
 
     //println!("trajectory: {:?}", new_code.trajectory)
 }
-
-mod seeding;
 
 fn main() {
     {
