@@ -20,6 +20,7 @@ pub struct Production {
     pub rhs: Vec<ProductionRhs>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Grammar {
     pub options: Flags,
 

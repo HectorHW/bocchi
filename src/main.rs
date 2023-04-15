@@ -1,7 +1,7 @@
 use configuration::PassStyle;
 use execution::{PassViaFile, PassViaStdin, RunTrace};
 use fuzzing::{DynEval, Fuzzer};
-use mutation::{random, RandomMutator};
+use mutation::tree_level::TreeRegrow;
 use ptracer::disable_aslr;
 use std::process;
 
@@ -12,9 +12,10 @@ mod configuration;
 mod execution;
 mod flags;
 mod fuzzing;
-mod generation;
 mod grammar;
 mod mutation;
+
+use crate::mutation::MutateTree;
 
 fn report_run(new_code: RunTrace) {
     println!("found new interesting sample");
@@ -29,21 +30,6 @@ fn report_run(new_code: RunTrace) {
 }
 
 fn main() {
-    {
-        let parsed = crate::grammar::grammar_parser::grammar(
-            &std::fs::read_to_string("input.grammar").unwrap(),
-        );
-
-        let generator = crate::generation::Generator::new(parsed.unwrap(), 20);
-
-        for _ in 0..10 {
-            let result = generator.generate();
-            println!("{}", String::from_utf8_lossy(&result.folded))
-        }
-
-        return;
-    }
-
     let config = match load_config("fuzz.toml") {
         Ok(config) => config,
         Err(ConfigReadError::ReadError(e)) => {
@@ -57,6 +43,48 @@ fn main() {
         }
     };
 
+    {
+        let grammar_content = match std::fs::read_to_string(config.grammar.path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("error reading grammar file: {e}");
+                process::exit(exitcode::IOERR);
+            }
+        };
+
+        let grammar = match crate::grammar::parse_grammar(&grammar_content) {
+            Ok(grammar) => grammar,
+            Err(e) => {
+                eprintln!("errors while parsing grammar");
+                eprintln!("{e}");
+                process::exit(exitcode::CONFIG)
+            }
+        };
+
+        let depth_limit = 30;
+
+        let generator = crate::grammar::generation::Generator::new(grammar.clone(), depth_limit);
+
+        let initial = generator.generate();
+
+        println!("initial: {}", String::from_utf8_lossy(&initial.folded));
+
+        let mut tree_mutator = TreeRegrow {
+            grammar,
+            depth_limit,
+            descend_rolls: 10,
+            regenerate_rolls: 10,
+            mut_proba: 10,
+        };
+
+        for _ in 0..10 {
+            let sample = initial.clone();
+            let result = tree_mutator.mutate(sample, &[]);
+            println!("{}", String::from_utf8_lossy(&result.unwrap().folded));
+        }
+    }
+
+    /*
     let path = config.binary.path.clone();
 
     let mapping = match analysys::analyze_binary(&path) {
@@ -71,6 +99,8 @@ fn main() {
     unsafe {
         disable_aslr();
     }
+
+
 
     let generator = Box::new(RandomMutator {
         generation_size: config.generation.population,
@@ -101,5 +131,5 @@ fn main() {
         for (new_code, _sample) in exec_status.new_codes {
             report_run(new_code)
         }
-    }
+    }*/
 }

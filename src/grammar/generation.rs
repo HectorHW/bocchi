@@ -5,12 +5,14 @@ use rand_regex::Regex;
 
 use crate::grammar::{Grammar, Token};
 
+#[derive(Clone, Debug)]
 pub struct ProductionApplication {
     pub rule_name: String,
     pub production_variant: usize,
     pub items: Vec<TreeNode>,
 }
 
+#[derive(Clone, Debug)]
 pub enum TreeNode {
     ProductionApplication(ProductionApplication),
     String(String),
@@ -39,6 +41,15 @@ impl TreeNode {
     }
 }
 
+impl Into<Sample> for TreeNode {
+    fn into(self) -> Sample {
+        let mut folded = vec![];
+        self.fold(&mut folded);
+        Sample { tree: self, folded }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Sample {
     pub tree: TreeNode,
     pub folded: Vec<u8>,
@@ -68,6 +79,22 @@ impl Generator {
         tree.fold(&mut folded);
 
         Sample { tree, folded }
+    }
+
+    pub fn generate_of_type(
+        &self,
+        name: &str,
+        attempts: usize,
+    ) -> Result<ProductionApplication, ()> {
+        for _attempt in 0..attempts {
+            if let Ok(TreeNode::ProductionApplication(res)) =
+                self.generate_production(name, self.depth_limit)
+            {
+                return Ok(res);
+            }
+        }
+
+        Err(())
     }
 
     fn generate_token(&self, token: &Token, remaining_depth: usize) -> Result<TreeNode, ()> {
