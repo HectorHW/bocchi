@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ffi::OsStr,
     fmt::Display,
     io::Write,
@@ -12,7 +12,7 @@ use ptracer::{nix::sys::wait::WaitStatus, Ptracer};
 
 use crate::{
     analysys::ElfInfo,
-    fuzzing::{Evaluator, SampleData},
+    fuzzing::{Evaluator, TestedSample},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -25,15 +25,11 @@ pub enum ExecutionError {
 
 pub struct ExitCodeEvaluator {
     binary: String,
-    seen_codes: HashSet<ExecResult>,
 }
 
 impl ExitCodeEvaluator {
     pub fn new(binary: String) -> Self {
-        ExitCodeEvaluator {
-            binary,
-            seen_codes: Default::default(),
-        }
+        ExitCodeEvaluator { binary }
     }
 }
 
@@ -60,7 +56,7 @@ impl Evaluator for ExitCodeEvaluator {
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<crate::fuzzing::SampleData<Self::Item, Self::EvalResult>, anyhow::Error> {
+    ) -> Result<crate::fuzzing::TestedSample<Self::Item, Self::EvalResult>, anyhow::Error> {
         let mut process = std::process::Command::new(&self.binary)
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
@@ -84,21 +80,7 @@ impl Evaluator for ExitCodeEvaluator {
             .map(ExecResult::Code)
             .unwrap_or(ExecResult::Signal);
 
-        Ok(if self.seen_codes.contains(&result) {
-            SampleData {
-                sample,
-                score: 0f64,
-                result,
-            }
-        } else {
-            self.seen_codes.insert(result.clone());
-
-            SampleData {
-                sample,
-                score: 1f64,
-                result,
-            }
-        })
+        Ok(TestedSample { sample, result })
     }
 }
 
@@ -107,13 +89,43 @@ pub struct FunctionTracer<S: InputPassStyle> {
     pass_style: S,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct RunTrace {
-    pub result: ExecResult,
-    pub trajectory: Vec<usize>,
+#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
+pub enum Hits {
+    #[default]
+    Once,
+    Twice,
+    Many,
 }
 
-impl crate::fuzzing::Sample for RunTrace {}
+impl Hits {
+    pub fn inc(self) -> Self {
+        match self {
+            Hits::Once => Hits::Twice,
+            Hits::Twice => Hits::Many,
+            Hits::Many => Hits::Many,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunTrace {
+    pub result: ExecResult,
+    pub trajectory: HashMap<usize, Hits>,
+}
+
+impl crate::sample_library::CoverageScore for RunTrace {
+    fn get_score(&self) -> f64 {
+        self.trajectory.len() as f64 + 0.1
+    }
+}
+
+impl crate::sample_library::ComparisonKey for RunTrace {
+    type Key = RunTrace;
+
+    fn get_key(&self) -> &Self::Key {
+        self
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum TraceError {
@@ -255,7 +267,7 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 
         let _maybe_needs_hold = S::pass_input(S::get_file(self, &mut tracer), input)?;
 
-        let mut trajectory = vec![];
+        let mut trajectory: HashMap<usize, Hits> = Default::default();
 
         let mut result = None;
 
@@ -268,7 +280,15 @@ impl<S: InputPassStyle> FunctionTracer<S> {
                 _ => {}
             }
             let adjusted_rip = tracer.registers().rip as usize - self.binary.base_offset.unwrap();
-            trajectory.push(adjusted_rip);
+            let new_value = trajectory
+                .entry(adjusted_rip)
+                .and_modify(|k| *k = k.inc())
+                .or_default()
+                .clone();
+
+            if matches!(new_value, Hits::Many) {
+                tracer.remove_breakpoint(tracer.registers().rip as usize);
+            }
         }
 
         assert!(result.is_some(), "child did not finish executing");
@@ -281,14 +301,12 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 }
 
 pub struct TraceEvaluator<S: InputPassStyle> {
-    seen_errors: HashMap<RunTrace, Vec<u8>>,
     tracer: FunctionTracer<S>,
 }
 
 impl TraceEvaluator<PassViaFile> {
     pub fn new(info: ElfInfo) -> Self {
         Self {
-            seen_errors: Default::default(),
             tracer: FunctionTracer::<PassViaFile>::new(info),
         }
     }
@@ -297,37 +315,22 @@ impl TraceEvaluator<PassViaFile> {
 impl TraceEvaluator<PassViaStdin> {
     pub fn new(info: ElfInfo) -> Self {
         Self {
-            seen_errors: Default::default(),
             tracer: FunctionTracer::<PassViaStdin>::new(info),
         }
     }
 }
 
 impl<S: InputPassStyle> Evaluator for TraceEvaluator<S> {
-    type Item = Vec<u8>;
+    type Item = crate::sample::Sample;
 
     type EvalResult = RunTrace;
 
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<SampleData<Self::Item, Self::EvalResult>, anyhow::Error> {
-        let result = self.tracer.run(&sample)?;
+    ) -> Result<TestedSample<Self::Item, Self::EvalResult>, anyhow::Error> {
+        let result = self.tracer.run(sample.get_folded())?;
 
-        Ok(if self.seen_errors.contains_key(&result) {
-            SampleData {
-                sample,
-                score: result.trajectory.len() as f64 * 0.1,
-                result,
-            }
-        } else {
-            self.seen_errors.insert(result.clone(), sample.clone());
-
-            SampleData {
-                sample,
-                score: result.trajectory.len() as f64 + 100f64,
-                result,
-            }
-        })
+        Ok(TestedSample { sample, result })
     }
 }

@@ -1,13 +1,12 @@
 use lazy_static::lazy_static;
-use std::iter::repeat_with;
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng, Rng};
 
-use crate::fuzzing::Generator;
+pub trait MutateBytes {
+    fn mutate(&self, reference: &[u8]) -> crate::sample::Patch;
+}
 
-pub type InputSample = Vec<u8>;
-
-pub fn random(size: usize) -> InputSample {
+pub fn random(size: usize) -> Vec<u8> {
     (0..size).map(|_| thread_rng().gen()).collect()
 }
 
@@ -45,7 +44,7 @@ fn action_with_chance(inv_chance: u32, remaining_input: usize) -> Option<Action>
     }
 }
 
-fn apply_action(input: &mut InputSample, position: usize, action: Action) {
+fn apply_action(input: &mut Vec<u8>, position: usize, action: Action) {
     let mut new_buf = input[..position].to_owned();
 
     match action {
@@ -68,7 +67,7 @@ fn apply_action(input: &mut InputSample, position: usize, action: Action) {
     *input = new_buf;
 }
 
-pub fn mutate(reference: &InputSample) -> InputSample {
+pub fn mutate(reference: &Vec<u8>) -> Vec<u8> {
     let mut data = reference.clone();
 
     let mut idx = 0;
@@ -92,47 +91,68 @@ pub fn mutate(reference: &InputSample) -> InputSample {
     data
 }
 
-pub fn clip(mut sample: InputSample, limit: usize) -> InputSample {
+pub fn clip(mut sample: Vec<u8>, limit: usize) -> Vec<u8> {
     sample.truncate(limit);
     sample
 }
 
 pub struct RandomMutator {
-    pub generation_size: usize,
     pub sample_len_limit: usize,
 }
 
-impl<EvalResult> Generator<EvalResult> for RandomMutator {
-    type Item = Vec<u8>;
+impl RandomMutator {
+    fn mutate(&self, sample: Vec<u8>) -> Vec<u8> {
+        clip(mutate(&sample), self.sample_len_limit)
+    }
+}
 
-    fn generate_samples(
-        &mut self,
-        mut existing_population: Vec<crate::fuzzing::SampleData<Self::Item, EvalResult>>,
-    ) -> (
-        Vec<crate::fuzzing::SampleData<Self::Item, EvalResult>>,
-        Vec<Self::Item>,
-    ) {
-        assert!(!existing_population.is_empty());
+fn get_random_position(buffer: &[u8]) -> usize {
+    if buffer.is_empty() {
+        return 0;
+    }
+    let mut rng = rand::thread_rng();
 
-        existing_population.truncate(self.generation_size);
+    rng.gen_range(0..buffer.len())
+}
 
-        let to_keep = if existing_population.len() > 2 {
-            existing_population
-                .into_iter()
-                .filter(|_item| thread_rng().gen_ratio(1, 2))
-                .collect::<Vec<_>>()
-        } else {
-            existing_population
-        };
+pub struct BitFlip {}
 
-        let new = repeat_with(|| {
-            let random_item = &to_keep[thread_rng().gen_range(0..to_keep.len())];
+impl MutateBytes for BitFlip {
+    fn mutate(&self, reference: &[u8]) -> crate::sample::Patch {
+        let mut rng = rand::thread_rng();
 
-            clip(mutate(&random_item.sample), self.sample_len_limit)
-        })
-        .take(self.generation_size - to_keep.len())
-        .collect();
+        let random_bit = 1 << (rng.gen_range(0..8));
 
-        (to_keep, new)
+        if reference.is_empty() {
+            return crate::sample::Patch::Xor {
+                position: 0,
+                content: vec![random_bit],
+            };
+        }
+
+        let random_position = get_random_position(reference);
+
+        crate::sample::Patch::Xor {
+            position: random_position,
+            content: vec![random_bit],
+        }
+    }
+}
+
+pub struct Erasure {
+    pub max_size: usize,
+}
+
+impl MutateBytes for Erasure {
+    fn mutate(&self, reference: &[u8]) -> crate::sample::Patch {
+        let mut rng = rand::thread_rng();
+
+        let random_size = rng.gen_range(1..=self.max_size);
+        let random_position = get_random_position(reference);
+
+        crate::sample::Patch::Erasure {
+            position: random_position,
+            size: random_size,
+        }
     }
 }

@@ -1,12 +1,15 @@
 use rand::Rng;
 
-use crate::grammar::{
-    generation::{self, ProductionApplication},
-    Grammar, Sample, TreeNode,
+use crate::{
+    grammar::{
+        generation::{self, ProductionApplication},
+        Grammar, GrammarSample, TreeNode,
+    },
+    sample::Sample,
 };
 
 pub trait MutateTree {
-    fn mutate(&mut self, sample: Sample, bank: &[Sample]) -> Result<Sample, Sample>;
+    fn mutate(&self, sample: Sample, bank: &[Sample]) -> Result<Sample, Sample>;
 }
 
 pub struct TreeRegrow {
@@ -18,12 +21,15 @@ pub struct TreeRegrow {
 }
 
 impl MutateTree for TreeRegrow {
-    fn mutate(&mut self, mut sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
+    fn mutate(&self, sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
+        // TODO keep patches in place when mutating
+        let (mut sample, patches) = sample.strip();
+
         let tree = &mut sample.tree;
 
         'reroll: for _roll in 0..self.descend_rolls {
             let TreeNode::ProductionApplication(root) = tree else {
-                return Err(sample);
+                return Err(Sample::new(sample, patches));
             };
 
             let Ok((root, remaining_depth)) = self.try_descend_tree(root) else {
@@ -40,16 +46,16 @@ impl MutateTree for TreeRegrow {
             let mut folded = vec![];
             sample.tree.fold(&mut folded);
             sample.folded = folded;
-            return Ok(sample);
+            return Ok(Sample::new(sample, patches));
         }
 
-        Err(sample)
+        Err(Sample::new(sample, patches))
     }
 }
 
 impl TreeRegrow {
     fn try_descend_tree<'b>(
-        &mut self,
+        &self,
         mut root: &'b mut ProductionApplication,
     ) -> Result<(&'b mut ProductionApplication, usize), ()> {
         let mut remaining_depth = self.depth_limit;

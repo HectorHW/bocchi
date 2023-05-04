@@ -41,16 +41,16 @@ impl TreeNode {
     }
 }
 
-impl Into<Sample> for TreeNode {
-    fn into(self) -> Sample {
+impl From<TreeNode> for GrammarSample {
+    fn from(val: TreeNode) -> Self {
         let mut folded = vec![];
-        self.fold(&mut folded);
-        Sample { tree: self, folded }
+        val.fold(&mut folded);
+        GrammarSample { tree: val, folded }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Sample {
+pub struct GrammarSample {
     pub tree: TreeNode,
     pub folded: Vec<u8>,
 }
@@ -68,7 +68,7 @@ impl Generator {
         }
     }
 
-    pub fn generate(&self) -> Sample {
+    pub fn generate(&self) -> GrammarSample {
         let tree = loop {
             if let Ok(res) = self.generate_production("root", self.depth_limit) {
                 break res;
@@ -78,7 +78,7 @@ impl Generator {
         let mut folded = vec![];
         tree.fold(&mut folded);
 
-        Sample { tree, folded }
+        GrammarSample { tree, folded }
     }
 
     pub fn generate_of_type(

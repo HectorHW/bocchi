@@ -2,7 +2,9 @@
 path = "./samples/vuln"
 #interesting_codes = [20, 255]
 
+[grammar]
+path = "input.grammar"
+
 
 [stdin]
 pass_style = "stdin"
-limit = 100

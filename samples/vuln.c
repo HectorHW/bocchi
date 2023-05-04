@@ -7,6 +7,11 @@ int inner() {
     char buffer[64];
     read_input(buffer);
 
+    if (strlen(buffer) == 0) {
+        puts("got empty string\n");
+        return 1;
+    }
+
     if (buffer[4] > buffer[5]) {
         puts("condition is true\n");
         return 10;

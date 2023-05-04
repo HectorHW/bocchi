@@ -1,135 +1,122 @@
-use std::collections::{HashMap, HashSet};
+use crate::sample_library::{ComparisonKey, CoverageScore, Library, SizeScore};
 
-pub type OldEntries<S, E> = Vec<SampleData<S, E>>;
-pub type NewEntries<S> = Vec<S>;
+pub trait Mutator {
+    type Item: Sized + Clone;
+    type MutInfo;
 
-pub trait Generator<EvalResult>
-where
-    Self::Item: Sized + Clone,
-{
-    type Item;
-
-    fn generate_samples(
+    fn mutate_sample(
         &mut self,
-        existing_population: OldEntries<Self::Item, EvalResult>,
-    ) -> (OldEntries<Self::Item, EvalResult>, NewEntries<Self::Item>);
+        sample: Self::Item,
+        library: &[Self::Item],
+    ) -> (Self::Item, Self::MutInfo);
+
+    fn update_scores(&mut self, index: Self::MutInfo, result: RunResult);
 }
 
-pub trait Evaluator
-where
-    Self::Item: Sized + Clone,
-{
-    type Item;
+pub trait Evaluator {
+    type Item: Sized + Clone;
     type EvalResult;
 
     fn score(
         &mut self,
         sample: Self::Item,
-    ) -> Result<SampleData<Self::Item, Self::EvalResult>, anyhow::Error>;
-}
-
-pub struct SampleData<Sample, EvalResult> {
-    pub sample: Sample,
-    pub result: EvalResult,
-    pub score: f64,
-}
-
-pub type StdinSample = Vec<u8>;
-
-pub trait Sample: std::hash::Hash + Clone + Eq {}
-
-impl Sample for StdinSample {}
-
-pub struct Fuzzer<EvalResult> {
-    sample_generator: Box<dyn Generator<EvalResult, Item = StdinSample>>,
-    pub library: Vec<SampleData<StdinSample, EvalResult>>,
-    evaluator: Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult>>,
-    unique_crashes: HashSet<EvalResult>,
+    ) -> Result<TestedSample<Self::Item, Self::EvalResult>, anyhow::Error>;
 }
 
 #[derive(Clone, Debug)]
-pub struct GenerationRunResult<EvalResult> {
-    pub statuses: HashMap<EvalResult, usize>,
-    pub new_codes: HashMap<EvalResult, StdinSample>,
+pub struct TestedSample<Sample, EvalResult> {
+    pub sample: Sample,
+    pub result: EvalResult,
 }
 
-pub type DynEval<EvalResult> =
-    Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult> + 'static>;
+impl<S, E: Eq> ComparisonKey for TestedSample<S, E> {
+    type Key = E;
 
-pub type DynGen<EvalResult> = Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>;
+    fn get_key(&self) -> &Self::Key {
+        &self.result
+    }
+}
 
-impl<EvalResult> Fuzzer<EvalResult>
-where
-    EvalResult: Sample,
-{
+impl<S, E: CoverageScore> CoverageScore for TestedSample<S, E> {
+    fn get_score(&self) -> f64 {
+        self.result.get_score()
+    }
+}
+
+pub struct Fuzzer<MutInfo> {
+    pub library: Box<dyn Library<Item = crate::sample::Sample, Key = crate::execution::RunTrace>>,
+    mutator: Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = MutInfo>>,
+    evaluator:
+        Box<dyn Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum RunResult {
+    Nothing,
+    New(crate::sample::Sample, crate::execution::RunTrace),
+    SizeImprovement(crate::sample::Sample, crate::execution::RunTrace),
+}
+
+pub type DynEval<Sample, EvalResult> =
+    Box<dyn Evaluator<Item = Sample, EvalResult = EvalResult> + 'static>;
+
+impl<MutInfo> Fuzzer<MutInfo> {
     pub fn new(
-        generator: Box<dyn Generator<EvalResult, Item = StdinSample> + 'static>,
-        evaluator: Box<dyn Evaluator<Item = StdinSample, EvalResult = EvalResult> + 'static>,
+        mutator: Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = MutInfo> + 'static>,
+        library: Box<
+            dyn Library<Key = crate::execution::RunTrace, Item = crate::sample::Sample> + 'static,
+        >,
+        evaluator: Box<
+            dyn Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>
+                + 'static,
+        >,
     ) -> Self {
         Fuzzer {
-            sample_generator: generator,
-            library: vec![],
+            mutator,
+            library,
             evaluator,
-            unique_crashes: HashSet::new(),
         }
     }
 
-    fn is_new(&self, data: &EvalResult) -> bool {
-        self.unique_crashes.contains(data)
-    }
-
-    fn record_new_crash(&mut self, data: &EvalResult) -> bool {
-        self.unique_crashes.insert(data.clone())
-    }
-
-    pub fn add_to_library(
+    fn put_in_library(
         &mut self,
-        sample: StdinSample,
-    ) -> Result<Option<EvalResult>, anyhow::Error> {
-        let scored = self.evaluator.score(sample)?;
-
-        let result = if self.record_new_crash(&scored.result) {
-            Some(scored.result.clone())
+        tested: TestedSample<crate::sample::Sample, crate::execution::RunTrace>,
+    ) -> RunResult {
+        if let Some(existing) = self.library.find_existing(&tested.result) {
+            if existing.get_size_score() > tested.sample.get_size_score() {
+                self.library
+                    .upsert(tested.result.clone(), tested.sample.clone());
+                RunResult::SizeImprovement(tested.sample, tested.result)
+            } else {
+                RunResult::Nothing
+            }
         } else {
-            None
-        };
+            self.library
+                .upsert(tested.result.clone(), tested.sample.clone());
 
-        self.library.push(scored);
+            RunResult::New(tested.sample, tested.result)
+        }
+    }
+
+    pub fn run_once(&mut self) -> Result<RunResult, anyhow::Error> {
+        let sample = self.library.pick_random();
+
+        let (mutated, mut_info) = self.mutator.mutate_sample(sample, self.library.linearize());
+
+        let traced = self.evaluator.score(mutated)?;
+
+        let result = self.put_in_library(traced);
+
+        self.mutator.update_scores(mut_info, result.clone());
 
         Ok(result)
     }
 
-    pub fn run_generation(&mut self) -> Result<GenerationRunResult<EvalResult>, anyhow::Error> {
-        let mut library = vec![];
+    pub fn put_seed(&mut self, sample: crate::sample::Sample) -> Result<RunResult, anyhow::Error> {
+        let traced = self.evaluator.score(sample)?;
 
-        std::mem::swap(&mut library, &mut self.library);
+        let result = self.put_in_library(traced);
 
-        let (mut keep, new_samples) = self.sample_generator.generate_samples(library);
-
-        let mut scored = new_samples
-            .into_iter()
-            .map(|sample| self.evaluator.score(sample))
-            .collect::<Result<Vec<_>, anyhow::Error>>()?;
-
-        let mut stats: HashMap<EvalResult, usize> = HashMap::new();
-
-        let mut new_results: HashMap<EvalResult, StdinSample> = Default::default();
-
-        for item in &scored {
-            *stats.entry(item.result.clone()).or_default() += 1;
-
-            if self.record_new_crash(&item.result) {
-                new_results.insert(item.result.clone(), item.sample.clone());
-            }
-        }
-
-        keep.append(&mut scored);
-
-        self.library = keep;
-
-        Ok(GenerationRunResult {
-            statuses: stats,
-            new_codes: new_results,
-        })
+        Ok(result)
     }
 }
