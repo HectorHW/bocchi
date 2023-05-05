@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::fmt::Debug;
 
 use itertools::Itertools;
 use rand::distributions::WeightedIndex;
@@ -17,6 +17,8 @@ pub trait Library {
     fn pick_random(&self) -> Self::Item;
 
     fn linearize(&mut self) -> &[Self::Item];
+
+    fn write(&self) -> String;
 }
 
 pub struct VectorLibrary<K, V> {
@@ -38,7 +40,7 @@ pub trait SizeScore {
     fn get_size_score(&self) -> f64;
 }
 
-impl<K: Clone + ComparisonKey + CoverageScore, V: Clone + SizeScore> Library
+impl<K: Clone + ComparisonKey + CoverageScore + Debug, V: Clone + SizeScore + Debug> Library
     for VectorLibrary<K, V>
 {
     type Item = V;
@@ -83,6 +85,14 @@ impl<K: Clone + ComparisonKey + CoverageScore, V: Clone + SizeScore> Library
 
     fn linearize(&mut self) -> &[Self::Item] {
         &self.items
+    }
+
+    fn write(&self) -> String {
+        self.items
+            .iter()
+            .zip(self.keys.iter())
+            .map(|(v, k)| format!("{k:?} => {v:?}"))
+            .join("\n")
     }
 }
 

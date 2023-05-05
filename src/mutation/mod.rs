@@ -14,7 +14,7 @@ use self::{
 };
 
 pub fn build_mutator(
-    config: &FuzzConfig,
+    _config: &FuzzConfig,
     grammar: &Grammar,
 ) -> Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = (bool, usize)>> {
     let binary: Vec<Box<dyn MutateBytes>> =

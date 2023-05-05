@@ -47,9 +47,9 @@ impl Patch {
 
 #[derive(Clone, Debug)]
 pub struct Sample {
-    tree: crate::grammar::GrammarSample,
-    patches: Vec<Patch>,
-    result: Vec<u8>,
+    pub tree: crate::grammar::GrammarSample,
+    pub patches: Vec<Patch>,
+    pub result: Vec<u8>,
 }
 
 pub type TestedSample = crate::fuzzing::TestedSample<Sample, crate::execution::RunTrace>;

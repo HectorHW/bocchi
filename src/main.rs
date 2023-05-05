@@ -1,7 +1,7 @@
 use configuration::PassStyle;
 use execution::{PassViaFile, PassViaStdin, RunTrace};
 use fuzzing::{DynEval, Fuzzer};
-use mutation::tree_level::TreeRegrow;
+
 use ptracer::disable_aslr;
 use sample_library::{Library, VectorLibrary};
 use std::process;
@@ -18,7 +18,7 @@ mod mutation;
 mod sample;
 mod sample_library;
 
-use crate::mutation::{build_mutator, MutateTree};
+use crate::mutation::build_mutator;
 
 fn report_run(new_code: RunTrace) {
     println!("found new interesting sample");
@@ -117,7 +117,8 @@ fn main() {
 
         if gen % 100 == 0 {
             println!("at gen {gen}");
-            println!("library size: {}", fuzzer.library.linearize().len())
+            println!("library size: {}", fuzzer.library.linearize().len());
+            //println!("{}", fuzzer.library.write())
         }
 
         match exec_status {

@@ -33,17 +33,12 @@ pub struct StdinFuzzingOptions {
     pub pass_style: PassStyle,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PassStyle {
+    #[default]
     Stdin,
     File,
-}
-
-impl Default for PassStyle {
-    fn default() -> Self {
-        PassStyle::Stdin
-    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -77,17 +72,12 @@ pub struct SeedOptions {
     pub path: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Default)]
 #[serde(untagged)]
 pub enum ExitCodeFilter {
+    #[default]
     Any,
     Set(HashSet<i32>),
-}
-
-impl Default for ExitCodeFilter {
-    fn default() -> Self {
-        ExitCodeFilter::Any
-    }
 }
 
 impl ExitCodeFilter {

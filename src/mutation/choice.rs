@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use rand::Rng;
 
 use crate::fuzzing::Mutator;
@@ -31,7 +30,7 @@ impl Mutator for MutationChooser {
 
                 let mutator = &self.tree[idx];
 
-                match mutator.mutate(sample, &library) {
+                match mutator.mutate(sample, library) {
                     Ok(res) => {
                         break (res, (m1, idx));
                     }
@@ -53,7 +52,7 @@ impl Mutator for MutationChooser {
         }
     }
 
-    fn update_scores(&mut self, index: Self::MutInfo, result: crate::fuzzing::RunResult) {
+    fn update_scores(&mut self, _index: Self::MutInfo, _result: crate::fuzzing::RunResult) {
         //nothing
     }
 }
