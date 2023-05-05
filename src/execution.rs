@@ -280,14 +280,15 @@ impl<S: InputPassStyle> FunctionTracer<S> {
                 _ => {}
             }
             let adjusted_rip = tracer.registers().rip as usize - self.binary.base_offset.unwrap();
-            let new_value = trajectory
+            let new_value = *trajectory
                 .entry(adjusted_rip)
                 .and_modify(|k| *k = k.inc())
-                .or_default()
-                .clone();
+                .or_default();
 
             if matches!(new_value, Hits::Many) {
-                tracer.remove_breakpoint(tracer.registers().rip as usize);
+                tracer
+                    .remove_breakpoint(tracer.registers().rip as usize)
+                    .unwrap();
             }
         }
 
