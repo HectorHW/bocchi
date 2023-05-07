@@ -266,7 +266,27 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
         Self::write_stats_in_frame(frame, layout[2], unique_stats, "uniques");
     }
 
-    fn format_crashes(&mut self) -> Vec<String> {
+    fn format_crash(items: &[usize], free_space: usize) -> String {
+        let mut items = items.to_owned();
+        if items.len() >= 2 && items[items.len() - 1] == items[items.len() - 2] {
+            items.pop();
+        }
+        let formatted = items.iter().map(|n| format!("{n:x}")).join(" ");
+
+        if formatted.len() + 2 >= free_space {
+            format!(
+                "...{}",
+                String::from_utf8(
+                    formatted.as_bytes()[formatted.len() - free_space + 10..].to_owned()
+                )
+                .unwrap()
+            )
+        } else {
+            formatted
+        }
+    }
+
+    fn format_crashes(&mut self, free_space: usize) -> Vec<String> {
         self.library
             .keys()
             .iter()
@@ -274,13 +294,18 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             .filter(|(k, _v)| k.result == ExecResult::Signal)
             .filter_map(|(crash_trace, _sample)| {
                 crate::sample_library::Library::get_detailed_trace(&*self.library, crash_trace)
-                    .map(|detailed| detailed.iter().map(|n| format!("{n:x}")).join(" "))
+                    .map(|crash| Self::format_crash(crash, free_space))
             })
             .collect_vec()
     }
 
     fn write_right_panel(&mut self, frame: &mut Frame<B>, target: Rect) {
-        Self::write_list_in_frame(frame, target, self.format_crashes(), "crashes")
+        Self::write_list_in_frame(
+            frame,
+            target,
+            self.format_crashes(target.width as usize),
+            "crashes",
+        )
     }
 }
 
