@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    io::Write,
-    os::fd::AsRawFd,
+    fs::File,
+    io::{Read, Write},
+    os::fd::{AsRawFd, FromRawFd},
     path::PathBuf,
     process::{self, Child, Command, Stdio},
 };

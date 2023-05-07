@@ -20,6 +20,7 @@ use tui::{
 };
 
 use crate::{
+    configuration::FuzzConfig,
     execution::{ExecResult, RunTrace},
     state::{Library, State, AM},
 };
@@ -28,10 +29,15 @@ pub struct TerminalUi<B: Backend + std::io::Write> {
     library: AM<Library>,
     state: AM<State>,
     terminal: Option<Terminal<B>>,
+    config: &'static FuzzConfig,
 }
 
 impl TerminalUi<CrosstermBackend<std::io::Stdout>> {
-    pub fn new(library: AM<Library>, state: AM<State>) -> Result<Self, anyhow::Error> {
+    pub fn new(
+        library: AM<Library>,
+        state: AM<State>,
+        config: &'static FuzzConfig,
+    ) -> Result<Self, anyhow::Error> {
         enable_raw_mode()?;
         let mut stdout = std::io::stdout();
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -42,6 +48,7 @@ impl TerminalUi<CrosstermBackend<std::io::Stdout>> {
             library,
             state,
             terminal: Some(terminal),
+            config,
         })
     }
 }
@@ -49,6 +56,7 @@ impl TerminalUi<CrosstermBackend<std::io::Stdout>> {
 struct TerminalInstance<'m, B: Backend + std::io::Write> {
     pub library: MutexGuard<'m, Library>,
     pub state: MutexGuard<'m, State>,
+    pub config: &'static FuzzConfig,
     pub backend: PhantomData<B>,
 }
 
@@ -66,6 +74,7 @@ impl<B: Backend + std::io::Write> TerminalUi<B> {
             let mut instance = TerminalInstance {
                 library,
                 state,
+                config: self.config,
                 backend: PhantomData {},
             };
 
@@ -99,7 +108,12 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
     }
 
     fn draw_outer_frame(&mut self, frame: &mut Frame<B>, target: Rect) {
-        let block = Block::default().title("bocchifuzz").borders(Borders::ALL);
+        let block = Block::default()
+            .title(format!(
+                "bocchifuzz running {} with grammar {}",
+                self.config.binary.path, self.config.grammar.path
+            ))
+            .borders(Borders::ALL);
         frame.render_widget(block, target);
     }
 
@@ -283,8 +297,12 @@ impl<B: Backend + std::io::Write> Drop for TerminalUi<B> {
     }
 }
 
-pub fn serve_ui(library: AM<Library>, state: AM<State>) -> Result<(), anyhow::Error> {
-    let mut ui = TerminalUi::new(library, state)?;
+pub fn serve_ui(
+    library: AM<Library>,
+    state: AM<State>,
+    config: &'static FuzzConfig,
+) -> Result<(), anyhow::Error> {
+    let mut ui = TerminalUi::new(library, state, config)?;
 
     const FRAME_RATE: u32 = 30;
 
