@@ -1,6 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use crate::sample_library::{ComparisonKey, CoverageScore, Library, SizeScore};
+use crate::{
+    execution::{self, DetailedTrace},
+    sample_library::{ComparisonKey, CoverageScore, Library, SizeScore},
+};
 
 pub trait Mutator {
     type Item: Sized + Clone;
@@ -23,6 +26,11 @@ pub trait Evaluator {
         &mut self,
         sample: Self::Item,
     ) -> Result<TestedSample<Self::Item, Self::EvalResult>, anyhow::Error>;
+
+    fn trace_detailed(
+        &mut self,
+        sample: Self::Item,
+    ) -> Result<execution::DetailedTrace, anyhow::Error>;
 }
 
 #[derive(Clone, Debug)]
@@ -85,30 +93,47 @@ where
         }
     }
 
+    fn get_detailed_trace(
+        &mut self,
+        sample: &crate::sample::Sample,
+    ) -> Result<DetailedTrace, anyhow::Error> {
+        self.evaluator.trace_detailed(sample.clone())
+    }
+
     fn put_in_library(
         &mut self,
         tested: TestedSample<crate::sample::Sample, crate::execution::RunTrace>,
-    ) -> RunResult {
-        let mut library = self.library.lock().unwrap();
+    ) -> Result<RunResult, anyhow::Error> {
+        let status = {
+            let mut library = self.library.lock().unwrap();
 
-        let status = if let Some(existing) = library.find_existing(&tested.result) {
-            if existing.get_size_score() > tested.sample.get_size_score() {
-                library.upsert(tested.result.clone(), tested.sample.clone());
-                RunResultStatus::SizeImprovement
+            if let Some(existing) = library.find_existing(&tested.result) {
+                if existing.get_size_score() > tested.sample.get_size_score() {
+                    library.upsert(tested.result.clone(), tested.sample.clone());
+                    RunResultStatus::SizeImprovement
+                } else {
+                    RunResultStatus::Nothing
+                }
             } else {
-                RunResultStatus::Nothing
-            }
-        } else {
-            library.upsert(tested.result.clone(), tested.sample.clone());
+                library.upsert(tested.result.clone(), tested.sample.clone());
 
-            RunResultStatus::New
+                RunResultStatus::New
+            }
         };
 
-        RunResult {
+        if let RunResultStatus::New = status {
+            let detailed_trace = self.get_detailed_trace(&tested.sample)?;
+
+            let mut library = self.library.lock().unwrap();
+
+            library.attach_detailed_trace(&tested.result, detailed_trace);
+        };
+
+        Ok(RunResult {
             sample: tested.sample,
             trace: tested.result,
             status,
-        }
+        })
     }
 
     pub fn run_once(&mut self) -> Result<RunResult, anyhow::Error> {
@@ -122,7 +147,7 @@ where
 
         let traced = self.evaluator.score(mutated)?;
 
-        let result = self.put_in_library(traced);
+        let result = self.put_in_library(traced)?;
 
         self.mutator.update_scores(mut_info, result.clone());
 
@@ -132,7 +157,7 @@ where
     pub fn put_seed(&mut self, sample: crate::sample::Sample) -> Result<RunResult, anyhow::Error> {
         let traced = self.evaluator.score(sample)?;
 
-        let result = self.put_in_library(traced);
+        let result = self.put_in_library(traced)?;
 
         Ok(result)
     }

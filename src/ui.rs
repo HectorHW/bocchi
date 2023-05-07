@@ -259,7 +259,10 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             .iter()
             .zip(self.library.values().iter())
             .filter(|(k, _v)| k.result == ExecResult::Signal)
-            .map(|(crash_trace, _sample)| format!("{:?}", crash_trace.trajectory))
+            .filter_map(|(crash_trace, _sample)| {
+                crate::sample_library::Library::get_detailed_trace(&*self.library, crash_trace)
+                    .map(|detailed| detailed.iter().map(|n| format!("{n:x}")).join(" "))
+            })
             .collect_vec()
     }
 

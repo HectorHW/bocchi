@@ -4,6 +4,8 @@ use itertools::Itertools;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
+use crate::execution::DetailedTrace;
+
 pub trait Library {
     type Key: ComparisonKey + Clone;
     type Item: Sized + Clone;
@@ -13,6 +15,10 @@ pub trait Library {
     fn find_existing_mut(&mut self, reference: &Self::Key) -> Option<&mut Self::Item>;
 
     fn upsert(&mut self, key: Self::Key, object: Self::Item);
+
+    fn attach_detailed_trace(&mut self, key: &Self::Key, trace: DetailedTrace);
+
+    fn get_detailed_trace(&self, key: &Self::Key) -> Option<&DetailedTrace>;
 
     fn pick_random(&self) -> Self::Item;
 
@@ -24,6 +30,7 @@ pub trait Library {
 pub struct VectorLibrary<K, V> {
     keys: Vec<K>,
     items: Vec<V>,
+    detailed_traces: Vec<Option<DetailedTrace>>,
 }
 
 pub trait ComparisonKey {
@@ -69,7 +76,8 @@ impl<K: Clone + ComparisonKey + CoverageScore + Debug, V: Clone + SizeScore + De
             *existing = object;
         } else {
             self.keys.push(key);
-            self.items.push(object)
+            self.items.push(object);
+            self.detailed_traces.push(None)
         }
     }
 
@@ -94,6 +102,26 @@ impl<K: Clone + ComparisonKey + CoverageScore + Debug, V: Clone + SizeScore + De
             .map(|(v, k)| format!("{k:?} => {v:?}"))
             .join("\n")
     }
+
+    fn attach_detailed_trace(&mut self, key: &Self::Key, trace: DetailedTrace) {
+        let (item_idx, _) = self
+            .keys
+            .iter()
+            .find_position(|k| k.get_key() == key.get_key())
+            .unwrap();
+
+        self.detailed_traces[item_idx] = Some(trace)
+    }
+
+    fn get_detailed_trace(&self, key: &Self::Key) -> Option<&DetailedTrace> {
+        let (item_idx, _) = self
+            .keys
+            .iter()
+            .find_position(|k| k.get_key() == key.get_key())
+            .unwrap();
+
+        self.detailed_traces[item_idx].as_ref()
+    }
 }
 
 impl<K, V> VectorLibrary<K, V> {
@@ -101,6 +129,7 @@ impl<K, V> VectorLibrary<K, V> {
         Self {
             keys: vec![],
             items: vec![],
+            detailed_traces: vec![],
         }
     }
 

@@ -145,8 +145,6 @@ pub struct Sample {
     pub result: Vec<u8>,
 }
 
-pub type TestedSample = crate::fuzzing::TestedSample<Sample, crate::execution::RunTrace>;
-
 impl Sample {
     pub fn new(tree: crate::grammar::GrammarSample, patches: Vec<Patch>) -> Self {
         let mut result = tree.folded.clone();

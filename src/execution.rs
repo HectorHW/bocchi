@@ -83,6 +83,10 @@ impl Evaluator for ExitCodeEvaluator {
 
         Ok(TestedSample { sample, result })
     }
+
+    fn trace_detailed(&mut self, sample: Self::Item) -> Result<self::DetailedTrace, anyhow::Error> {
+        Ok(vec![])
+    }
 }
 
 pub struct FunctionTracer {
@@ -113,6 +117,8 @@ pub struct RunTrace {
     pub result: ExecResult,
     pub trajectory: HashMap<usize, Hits>,
 }
+
+pub type DetailedTrace = Vec<usize>;
 
 impl crate::sample_library::CoverageScore for RunTrace {
     fn get_score(&self) -> f64 {
@@ -161,6 +167,49 @@ impl FunctionTracer {
                 InputPassStyle::File(None)
             },
         }
+    }
+}
+
+trait TraceRecorder: Default {
+    /// add point to trace, indicate with bool if we want to get more of this point
+    fn add_point(&mut self, point: usize) -> bool;
+
+    fn add_exit(&mut self, exit: ExecResult);
+}
+
+impl TraceRecorder for RunTrace {
+    fn add_point(&mut self, point: usize) -> bool {
+        let new_count = self
+            .trajectory
+            .entry(point)
+            .and_modify(|e| *e = e.inc())
+            .or_default();
+
+        !matches!(new_count, Hits::Many)
+    }
+
+    fn add_exit(&mut self, exit: ExecResult) {
+        self.result = exit;
+    }
+}
+
+impl Default for RunTrace {
+    fn default() -> Self {
+        Self {
+            result: ExecResult::Code(0),
+            trajectory: Default::default(),
+        }
+    }
+}
+
+impl TraceRecorder for DetailedTrace {
+    fn add_point(&mut self, point: usize) -> bool {
+        self.push(point);
+        true
+    }
+
+    fn add_exit(&mut self, _exit: ExecResult) {
+        //we do not care about exit code here
     }
 }
 
@@ -231,7 +280,7 @@ impl FunctionTracer {
         }
     }
 
-    pub fn run(&mut self, input: &[u8]) -> Result<RunTrace, TraceError> {
+    pub fn run<R: TraceRecorder>(&mut self, input: &[u8]) -> Result<R, TraceError> {
         let path = self.binary.path.clone();
         let cmd = self.make_command(path);
 
@@ -245,7 +294,7 @@ impl FunctionTracer {
 
         let _maybe_needs_hold = self.pass_input(&mut tracer, input)?;
 
-        let mut trajectory: HashMap<usize, Hits> = Default::default();
+        let mut trajectory: R = R::default();
 
         let mut result = None;
 
@@ -258,12 +307,10 @@ impl FunctionTracer {
                 _ => {}
             }
             let adjusted_rip = tracer.registers().rip as usize - self.binary.base_offset.unwrap();
-            let new_value = *trajectory
-                .entry(adjusted_rip)
-                .and_modify(|k| *k = k.inc())
-                .or_default();
 
-            if matches!(new_value, Hits::Many) {
+            let should_keep_breakpoint = trajectory.add_point(adjusted_rip);
+
+            if !should_keep_breakpoint {
                 tracer
                     .remove_breakpoint(tracer.registers().rip as usize)
                     .unwrap();
@@ -272,10 +319,9 @@ impl FunctionTracer {
 
         assert!(result.is_some(), "child did not finish executing");
 
-        Ok(RunTrace {
-            result: result.unwrap(),
-            trajectory,
-        })
+        trajectory.add_exit(result.unwrap());
+
+        Ok(trajectory)
     }
 }
 
@@ -300,8 +346,14 @@ impl Evaluator for TraceEvaluator {
         &mut self,
         sample: Self::Item,
     ) -> Result<TestedSample<Self::Item, Self::EvalResult>, anyhow::Error> {
-        let result = self.tracer.run(sample.get_folded())?;
+        let result = self.tracer.run::<RunTrace>(sample.get_folded())?;
 
         Ok(TestedSample { sample, result })
+    }
+
+    fn trace_detailed(&mut self, sample: Self::Item) -> Result<self::DetailedTrace, anyhow::Error> {
+        self.tracer
+            .run::<DetailedTrace>(sample.get_folded())
+            .map_err(|e| e.into())
     }
 }
