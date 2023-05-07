@@ -14,6 +14,8 @@ pub struct State {
     pub total_working: usize,
 
     pub start_time: Instant,
+    pub last_unique_crash: Option<Instant>,
+    pub last_new_path: Option<Instant>,
 }
 
 impl State {
@@ -25,6 +27,8 @@ impl State {
             total_nonzero: 0,
             total_working: 0,
             start_time: Instant::now(),
+            last_unique_crash: None,
+            last_new_path: None,
         }
     }
 }

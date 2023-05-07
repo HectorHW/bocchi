@@ -119,25 +119,22 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
 
     fn extract_run_stats(&mut self) -> Vec<(String, String)> {
         vec![
+            ("total".to_string(), self.state.tested_samples.to_string()),
             (
-                "total runs".to_string(),
-                self.state.tested_samples.to_string(),
+                "  - zero-exit".to_string(),
+                self.state.total_working.to_string(),
+            ),
+            (
+                "  - nonzero".to_string(),
+                self.state.total_nonzero.to_string(),
+            ),
+            (
+                "  - crashes".to_string(),
+                self.state.total_crashes.to_string(),
             ),
             (
                 "size improvements".to_string(),
                 self.state.improvements.to_string(),
-            ),
-            (
-                "total zero-exit".to_string(),
-                self.state.total_working.to_string(),
-            ),
-            (
-                "total nonzero".to_string(),
-                self.state.total_nonzero.to_string(),
-            ),
-            (
-                "total crashes".to_string(),
-                self.state.total_crashes.to_string(),
             ),
         ]
     }
@@ -177,14 +174,33 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
         ]
     }
 
-    fn get_run_duration(&self) -> String {
-        let duration = Instant::now() - self.state.start_time;
-
+    fn format_duration(duration: Duration) -> String {
         format_duration(Duration::from_secs(duration.as_secs())).to_string()
     }
 
+    fn get_run_duration(&self) -> String {
+        let duration = Instant::now() - self.state.start_time;
+        Self::format_duration(duration)
+    }
+
+    fn na_duration(point_in_the_past: Option<Instant>) -> String {
+        point_in_the_past
+            .map(|t| Self::format_duration(Instant::now() - t))
+            .unwrap_or_else(|| "n/a".to_string())
+    }
+
     fn extract_time_stats(&mut self) -> Vec<(String, String)> {
-        vec![("run duration".to_string(), self.get_run_duration())]
+        vec![
+            ("run duration".to_string(), self.get_run_duration()),
+            (
+                "last new path".to_string(),
+                Self::na_duration(self.state.last_new_path),
+            ),
+            (
+                "last new crash".to_string(),
+                Self::na_duration(self.state.last_unique_crash),
+            ),
+        ]
     }
 
     fn write_stats(frame: &mut Frame<B>, target: Rect, stats: Vec<(String, String)>) {
@@ -245,8 +261,8 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             .direction(Direction::Vertical)
             .constraints(
                 [
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(50),
+                    Constraint::Percentage(30),
+                    Constraint::Percentage(40),
                     Constraint::Percentage(30),
                 ]
                 .as_ref(),

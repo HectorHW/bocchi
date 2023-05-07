@@ -1,6 +1,7 @@
 use std::{
     process,
     thread::{self, JoinHandle},
+    time::Instant,
 };
 
 use crate::{
@@ -76,8 +77,17 @@ pub fn spawn_fuzzer(
 
             state.tested_samples += 1;
 
-            if let crate::fuzzing::RunResultStatus::SizeImprovement = result.status {
-                state.improvements += 1;
+            match result.status {
+                crate::fuzzing::RunResultStatus::Nothing => {}
+                crate::fuzzing::RunResultStatus::New => {
+                    state.last_new_path = Some(Instant::now());
+                    if let execution::ExecResult::Signal = result.trace.result {
+                        state.last_unique_crash = Some(Instant::now());
+                    }
+                }
+                crate::fuzzing::RunResultStatus::SizeImprovement => {
+                    state.improvements += 1;
+                }
             }
 
             match result.trace.result {
