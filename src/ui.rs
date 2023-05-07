@@ -10,6 +10,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use humantime::format_duration;
 use itertools::Itertools;
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -165,9 +166,7 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
     fn get_run_duration(&self) -> String {
         let duration = Instant::now() - self.state.start_time;
 
-        let duration = chrono::Duration::from_std(duration).unwrap();
-
-        duration.to_string()
+        format_duration(Duration::from_secs(duration.as_secs())).to_string()
     }
 
     fn extract_time_stats(&mut self) -> Vec<(String, String)> {

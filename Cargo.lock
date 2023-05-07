@@ -112,6 +112,7 @@ dependencies = [
  "ctrlc",
  "exitcode",
  "goblin",
+ "humantime",
  "itertools 0.10.5",
  "lazy_static",
  "memfile",
