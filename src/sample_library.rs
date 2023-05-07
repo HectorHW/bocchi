@@ -103,4 +103,16 @@ impl<K, V> VectorLibrary<K, V> {
             items: vec![],
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    pub fn keys(&self) -> &[K] {
+        &self.keys
+    }
+
+    pub fn values(&self) -> &[V] {
+        &self.items
+    }
 }

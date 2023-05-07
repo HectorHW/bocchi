@@ -6,17 +6,14 @@ pub use tree_level::MutateTree;
 
 pub use choice::MutationChooser;
 
-use crate::{configuration::FuzzConfig, fuzzing::Mutator, grammar::Grammar};
+use crate::{configuration::FuzzConfig, grammar::Grammar};
 
 use self::{
     binary_level::{BitFlip, Erasure, MutateBytes},
     tree_level::TreeRegrow,
 };
 
-pub fn build_mutator(
-    _config: &FuzzConfig,
-    grammar: &Grammar,
-) -> Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = (bool, usize)>> {
+pub fn build_mutator(_config: &FuzzConfig, grammar: &Grammar) -> MutationChooser {
     let binary: Vec<Box<dyn MutateBytes>> =
         vec![Box::new(BitFlip {}), Box::new(Erasure { max_size: 50 })];
 
@@ -28,5 +25,5 @@ pub fn build_mutator(
         mut_proba: 3,
     })];
 
-    Box::new(MutationChooser::new(binary, tree))
+    MutationChooser::new(binary, tree)
 }

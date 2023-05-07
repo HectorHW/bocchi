@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use crate::sample_library::{ComparisonKey, CoverageScore, Library, SizeScore};
 
 pub trait Mutator {
@@ -42,35 +44,40 @@ impl<S, E: CoverageScore> CoverageScore for TestedSample<S, E> {
         self.result.get_score()
     }
 }
+type AM<T> = Arc<Mutex<T>>;
 
-pub struct Fuzzer<MutInfo> {
-    pub library: Box<dyn Library<Item = crate::sample::Sample, Key = crate::execution::RunTrace>>,
-    mutator: Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = MutInfo>>,
-    evaluator:
-        Box<dyn Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>>,
+pub struct Fuzzer<Lib, Mut, Eval, MutInfo>
+where
+    Lib: Library,
+    Mut: Mutator<Item = crate::sample::Sample, MutInfo = MutInfo>,
+    Eval: Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>,
+{
+    pub library: AM<Lib>,
+    mutator: Mut,
+    evaluator: Eval,
 }
 
 #[derive(Clone, Debug)]
-pub enum RunResult {
-    Nothing,
-    New(crate::sample::Sample, crate::execution::RunTrace),
-    SizeImprovement(crate::sample::Sample, crate::execution::RunTrace),
+pub struct RunResult {
+    pub sample: crate::sample::Sample,
+    pub trace: crate::execution::RunTrace,
+    pub status: RunResultStatus,
 }
 
-pub type DynEval<Sample, EvalResult> =
-    Box<dyn Evaluator<Item = Sample, EvalResult = EvalResult> + 'static>;
+#[derive(Clone, Debug)]
+pub enum RunResultStatus {
+    Nothing,
+    New,
+    SizeImprovement,
+}
 
-impl<MutInfo> Fuzzer<MutInfo> {
-    pub fn new(
-        mutator: Box<dyn Mutator<Item = crate::sample::Sample, MutInfo = MutInfo> + 'static>,
-        library: Box<
-            dyn Library<Key = crate::execution::RunTrace, Item = crate::sample::Sample> + 'static,
-        >,
-        evaluator: Box<
-            dyn Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>
-                + 'static,
-        >,
-    ) -> Self {
+impl<Lib, Mut, Eval, MutInfo> Fuzzer<Lib, Mut, Eval, MutInfo>
+where
+    Lib: Library<Key = crate::execution::RunTrace, Item = crate::sample::Sample>,
+    Mut: Mutator<Item = crate::sample::Sample, MutInfo = MutInfo>,
+    Eval: Evaluator<Item = crate::sample::Sample, EvalResult = crate::execution::RunTrace>,
+{
+    pub fn new(mutator: Mut, library: AM<Lib>, evaluator: Eval) -> Self {
         Fuzzer {
             mutator,
             library,
@@ -82,26 +89,36 @@ impl<MutInfo> Fuzzer<MutInfo> {
         &mut self,
         tested: TestedSample<crate::sample::Sample, crate::execution::RunTrace>,
     ) -> RunResult {
-        if let Some(existing) = self.library.find_existing(&tested.result) {
+        let mut library = self.library.lock().unwrap();
+
+        let status = if let Some(existing) = library.find_existing(&tested.result) {
             if existing.get_size_score() > tested.sample.get_size_score() {
-                self.library
-                    .upsert(tested.result.clone(), tested.sample.clone());
-                RunResult::SizeImprovement(tested.sample, tested.result)
+                library.upsert(tested.result.clone(), tested.sample.clone());
+                RunResultStatus::SizeImprovement
             } else {
-                RunResult::Nothing
+                RunResultStatus::Nothing
             }
         } else {
-            self.library
-                .upsert(tested.result.clone(), tested.sample.clone());
+            library.upsert(tested.result.clone(), tested.sample.clone());
 
-            RunResult::New(tested.sample, tested.result)
+            RunResultStatus::New
+        };
+
+        RunResult {
+            sample: tested.sample,
+            trace: tested.result,
+            status,
         }
     }
 
     pub fn run_once(&mut self) -> Result<RunResult, anyhow::Error> {
-        let sample = self.library.pick_random();
+        let (mutated, mut_info) = {
+            let mut library = self.library.lock().unwrap();
 
-        let (mutated, mut_info) = self.mutator.mutate_sample(sample, self.library.linearize());
+            let sample = library.pick_random();
+
+            self.mutator.mutate_sample(sample, library.linearize())
+        };
 
         let traced = self.evaluator.score(mutated)?;
 

@@ -28,12 +28,12 @@ pub struct GrammarOptions {
     pub path: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Default)]
+#[derive(Copy, Clone, Debug, Deserialize, Default)]
 pub struct StdinFuzzingOptions {
     pub pass_style: PassStyle,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PassStyle {
     #[default]

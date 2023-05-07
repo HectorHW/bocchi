@@ -1,9 +1,9 @@
 use std::{
     collections::HashMap,
-    ffi::OsStr,
     fmt::Display,
     io::Write,
     os::fd::AsRawFd,
+    path::PathBuf,
     process::{self, Child, Command, Stdio},
 };
 
@@ -12,6 +12,7 @@ use ptracer::{nix::sys::wait::WaitStatus, Ptracer};
 
 use crate::{
     analysys::ElfInfo,
+    configuration::PassStyle as PassStyleCfg,
     fuzzing::{Evaluator, TestedSample},
 };
 
@@ -84,9 +85,9 @@ impl Evaluator for ExitCodeEvaluator {
     }
 }
 
-pub struct FunctionTracer<S: InputPassStyle> {
+pub struct FunctionTracer {
     binary: ElfInfo,
-    pass_style: S,
+    pass_style: InputPassStyle,
 }
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
@@ -145,107 +146,25 @@ fn determine_offset(child: &Child) -> std::io::Result<usize> {
     Ok(maps[0].start())
 }
 
-pub trait InputPassStyle: Sized {
-    fn make_command<P: AsRef<OsStr>>(exec_path: P, obj: &mut FunctionTracer<Self>) -> Command;
-
-    fn get_file(obj: &mut FunctionTracer<Self>, tracer: &mut Ptracer) -> Box<dyn Write>;
-
-    /// Indicates if file should be closed (true) or held until execution is finished
-    fn should_close() -> bool;
-
-    fn pass_input<F: std::io::Write>(
-        mut file: F,
-        input: &[u8],
-    ) -> Result<Option<F>, std::io::Error> {
-        file.write_all(input)?;
-        file.flush()?;
-        if Self::should_close() {
-            drop(file);
-            Ok(None)
-        } else {
-            Ok(Some(file))
-        }
-    }
+pub enum InputPassStyle {
+    File(Option<MemFile>),
+    StdIn,
 }
 
-pub struct PassViaStdin {}
-pub struct PassViaFile {
-    file: Option<MemFile>,
-}
-
-impl InputPassStyle for PassViaFile {
-    fn make_command<P: AsRef<OsStr>>(
-        exec_path: P,
-        obj: &mut FunctionTracer<PassViaFile>,
-    ) -> Command {
-        let mut command = Command::new(exec_path);
-
-        obj.pass_style.file =
-            Some(MemFile::create_default("stdin").expect("failure creating memfile"));
-
-        command
-            .arg(format!(
-                "/proc/{}/fd/{}",
-                process::id(),
-                obj.pass_style.file.as_ref().unwrap().as_raw_fd()
-            ))
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        command
-    }
-
-    fn get_file(obj: &mut FunctionTracer<Self>, _tracer: &mut Ptracer) -> Box<dyn Write> {
-        Box::new(obj.pass_style.file.take().unwrap())
-    }
-
-    fn should_close() -> bool {
-        false
-    }
-}
-impl InputPassStyle for PassViaStdin {
-    fn make_command<P: AsRef<OsStr>>(
-        exec_path: P,
-        _obj: &mut FunctionTracer<PassViaStdin>,
-    ) -> Command {
-        let mut command = Command::new(exec_path);
-
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        command
-    }
-
-    fn get_file(_obj: &mut FunctionTracer<Self>, tracer: &mut Ptracer) -> Box<dyn Write> {
-        Box::new(tracer.child_mut().stdin.take().unwrap())
-    }
-
-    fn should_close() -> bool {
-        true
-    }
-}
-
-impl FunctionTracer<PassViaFile> {
-    pub fn new(binary: ElfInfo) -> Self {
+impl FunctionTracer {
+    pub fn new(binary: ElfInfo, pass_style: PassStyleCfg) -> Self {
         Self {
             binary,
-            pass_style: PassViaFile { file: None },
+            pass_style: if pass_style == PassStyleCfg::Stdin {
+                InputPassStyle::StdIn
+            } else {
+                InputPassStyle::File(None)
+            },
         }
     }
 }
 
-impl FunctionTracer<PassViaStdin> {
-    pub fn new(binary: ElfInfo) -> Self {
-        Self {
-            binary,
-            pass_style: PassViaStdin {},
-        }
-    }
-}
-
-impl<S: InputPassStyle> FunctionTracer<S> {
+impl FunctionTracer {
     fn set_breakpoints(&self, tracer: &mut Ptracer) -> Result<(), TraceError> {
         for function in &self.binary.functions {
             tracer.insert_breakpoint(self.binary.base_offset.unwrap() + function.offset)?;
@@ -253,9 +172,68 @@ impl<S: InputPassStyle> FunctionTracer<S> {
         Ok(())
     }
 
+    fn make_command(&mut self, path: PathBuf) -> Command {
+        match &mut self.pass_style {
+            InputPassStyle::StdIn => {
+                let mut command = Command::new(path);
+
+                command
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                command
+            }
+            InputPassStyle::File(ref mut handle) => {
+                let mut command = Command::new(path);
+
+                let file =
+                    Some(MemFile::create_default("stdin").expect("failure creating memfile"));
+
+                command
+                    .arg(format!(
+                        "/proc/{}/fd/{}",
+                        process::id(),
+                        file.as_ref().unwrap().as_raw_fd()
+                    ))
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+
+                *handle = file;
+
+                command
+            }
+        }
+    }
+
+    fn pass_input(
+        &mut self,
+        tracer: &mut Ptracer,
+        input: &[u8],
+    ) -> Result<Option<MemFile>, std::io::Error> {
+        match &mut self.pass_style {
+            InputPassStyle::File(f) => {
+                let mut memfile = f.take().unwrap();
+
+                memfile.write_all(input)?;
+                memfile.flush()?;
+
+                Ok(Some(memfile))
+            }
+            InputPassStyle::StdIn => {
+                let mut stdin = tracer.child_mut().stdin.take().unwrap();
+
+                stdin.write_all(input)?;
+                stdin.flush()?;
+
+                Ok(None)
+            }
+        }
+    }
+
     pub fn run(&mut self, input: &[u8]) -> Result<RunTrace, TraceError> {
         let path = self.binary.path.clone();
-        let cmd = S::make_command(path, self);
+        let cmd = self.make_command(path);
 
         let mut tracer = Ptracer::spawn(cmd, None)?;
 
@@ -265,7 +243,7 @@ impl<S: InputPassStyle> FunctionTracer<S> {
 
         self.set_breakpoints(&mut tracer)?;
 
-        let _maybe_needs_hold = S::pass_input(S::get_file(self, &mut tracer), input)?;
+        let _maybe_needs_hold = self.pass_input(&mut tracer, input)?;
 
         let mut trajectory: HashMap<usize, Hits> = Default::default();
 
@@ -301,27 +279,19 @@ impl<S: InputPassStyle> FunctionTracer<S> {
     }
 }
 
-pub struct TraceEvaluator<S: InputPassStyle> {
-    tracer: FunctionTracer<S>,
+pub struct TraceEvaluator {
+    tracer: FunctionTracer,
 }
 
-impl TraceEvaluator<PassViaFile> {
-    pub fn new(info: ElfInfo) -> Self {
+impl TraceEvaluator {
+    pub fn new(info: ElfInfo, pass_style: PassStyleCfg) -> Self {
         Self {
-            tracer: FunctionTracer::<PassViaFile>::new(info),
+            tracer: FunctionTracer::new(info, pass_style),
         }
     }
 }
 
-impl TraceEvaluator<PassViaStdin> {
-    pub fn new(info: ElfInfo) -> Self {
-        Self {
-            tracer: FunctionTracer::<PassViaStdin>::new(info),
-        }
-    }
-}
-
-impl<S: InputPassStyle> Evaluator for TraceEvaluator<S> {
+impl Evaluator for TraceEvaluator {
     type Item = crate::sample::Sample;
 
     type EvalResult = RunTrace;
