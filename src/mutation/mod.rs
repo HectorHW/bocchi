@@ -10,20 +10,23 @@ use crate::{configuration::FuzzConfig, grammar::Grammar};
 
 use self::{
     binary_level::{BitFlip, Erasure, MutateBytes},
-    tree_level::TreeRegrow,
+    tree_level::{Resample, TreeRegrow},
 };
 
 pub fn build_mutator(_config: &FuzzConfig, grammar: &Grammar) -> MutationChooser {
     let binary: Vec<Box<dyn MutateBytes>> =
         vec![Box::new(BitFlip {}), Box::new(Erasure { max_size: 50 })];
 
-    let tree: Vec<Box<dyn MutateTree>> = vec![Box::new(TreeRegrow {
-        grammar: grammar.clone(),
-        depth_limit: 100,
-        descend_rolls: 10,
-        regenerate_rolls: 10,
-        mut_proba: 3,
-    })];
+    let tree: Vec<Box<dyn MutateTree>> = vec![
+        Box::new(TreeRegrow {
+            grammar: grammar.clone(),
+            depth_limit: 100,
+            descend_rolls: 10,
+            regenerate_rolls: 10,
+            mut_proba: 3,
+        }),
+        Box::new(Resample::new(grammar.clone(), 100)),
+    ];
 
     MutationChooser::new(binary, tree)
 }

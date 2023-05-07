@@ -2,7 +2,7 @@ use rand::Rng;
 
 use crate::{
     grammar::{
-        generation::{self, ProductionApplication, TreeNodeItem},
+        generation::{self, Generator, TreeNodeItem},
         Grammar, TreeNode,
     },
     sample::Sample,
@@ -102,51 +102,20 @@ impl MutateTree for TreeRegrow {
     }
 }
 
-impl TreeRegrow {
-    fn try_descend_tree<'b>(
-        &self,
-        mut root: &'b mut ProductionApplication,
-    ) -> Result<(&'b mut ProductionApplication, usize), ()> {
-        let mut remaining_depth = self.depth_limit;
-        loop {
-            if rand::thread_rng().gen_ratio(1, self.mut_proba) {
-                return Ok((root, remaining_depth));
-            } else {
-                let subtrees = count_subtrees(root);
-                if subtrees == 0 {
-                    return Err(());
-                }
-                let descend_position = rand::thread_rng().gen_range(0..subtrees);
+pub struct Resample {
+    generator: Generator,
+}
 
-                root = find_nth_subtree(root, descend_position);
-                if remaining_depth < 2 {
-                    return Err(());
-                } else {
-                    remaining_depth -= 1;
-                }
-            }
-        }
+impl MutateTree for Resample {
+    fn mutate(&self, _sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
+        Ok(Sample::new(self.generator.generate(), vec![]))
     }
 }
 
-fn find_nth_subtree(root: &mut ProductionApplication, mut n: usize) -> &mut ProductionApplication {
-    for subnode in root.items.iter_mut() {
-        match &mut subnode.item {
-            TreeNodeItem::ProductionApplication(_) if n > 0 => {
-                n -= 1;
-            }
-            TreeNodeItem::ProductionApplication(p) => {
-                return p;
-            }
-            _ => continue,
+impl Resample {
+    pub fn new(grammar: Grammar, depth_limit: usize) -> Self {
+        Self {
+            generator: crate::grammar::generation::Generator::new(grammar, depth_limit),
         }
     }
-    panic!()
-}
-
-fn count_subtrees(root: &ProductionApplication) -> usize {
-    root.items
-        .iter()
-        .filter(|item| matches!(item.item, TreeNodeItem::ProductionApplication(..)))
-        .count()
 }
