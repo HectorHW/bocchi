@@ -206,3 +206,27 @@ impl KnownBytes {
         }
     }
 }
+
+pub struct Garbage {
+    pub max_size: usize,
+}
+
+impl MutateBytes for Garbage {
+    fn mutate(&self, reference: &[u8]) -> crate::sample::Patch {
+        let mut rng = rand::thread_rng();
+
+        let size = rng.gen_range(1..=self.max_size);
+
+        let content = (0..size).map(|_| rng.gen()).collect();
+
+        if reference.is_empty() {
+            crate::sample::Patch::Replacement {
+                position: 0,
+                content,
+            }
+        } else {
+            let position = rng.gen_range(0..reference.len());
+            crate::sample::Patch::Replacement { position, content }
+        }
+    }
+}
