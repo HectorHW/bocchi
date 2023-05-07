@@ -10,6 +10,7 @@ pub enum Token {
     String(String),
     Hex(Vec<u8>),
     Regex(Regex),
+    Bytes { min: usize, max: usize },
 }
 
 pub type ProductionRhs = Vec<Token>;
@@ -100,6 +101,17 @@ peg::parser! {
                 compile_regex(&s, limit, unicode)
             }
 
+        rule bytes() -> (usize, usize) =
+            "bytes" _ "(" _ n:number() _ ")" {
+                (n as usize, n as usize)
+            }/
+            "bytes" _ "(" _ a:number() _ b:number() _ ")" {?
+                if a <= b {
+                    Ok((a as usize, b as usize))
+                }else{
+                    Err("bytes lower bound must be less of equal to upper bound")
+                }
+            }
 
         rule token() -> Token =
             "Nothing" {
@@ -107,6 +119,9 @@ peg::parser! {
             }/
             r: regex() {
                 Token::Regex(r)
+            }/
+            b: bytes() {
+                Token::Bytes { min: b.0, max: b.1 }
             }/
 
             i:identifier() {

@@ -166,12 +166,24 @@ impl Generator {
                 let regex_application = self.generate_regex(re);
                 Ok(TreeNodeItem::Regex(regex_application).into())
             }
+
+            &Token::Bytes { min, max } => {
+                Ok(TreeNodeItem::HexString(self.generate_byte_sequence(min, max)).into())
+            }
         }
     }
 
     fn generate_regex(&self, regex: &Regex) -> String {
         let mut rng = rand::thread_rng();
         rng.sample(regex)
+    }
+
+    fn generate_byte_sequence(&self, min: usize, max: usize) -> Vec<u8> {
+        let mut rng = rand::thread_rng();
+
+        let size = rng.gen_range(min..=max);
+
+        (0..size).map(|_| rng.gen()).collect()
     }
 
     fn generate_production(
