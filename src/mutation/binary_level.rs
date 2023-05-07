@@ -156,3 +156,53 @@ impl MutateBytes for Erasure {
         }
     }
 }
+
+pub struct KnownBytes {
+    variants: Vec<Vec<u8>>,
+}
+
+impl MutateBytes for KnownBytes {
+    fn mutate(&self, reference: &[u8]) -> crate::sample::Patch {
+        if reference.is_empty() {
+            return crate::sample::Patch::Replacement {
+                position: 0,
+                content: vec![0x00],
+            };
+        }
+        let mut rng = rand::thread_rng();
+        let item = rng.gen_range(0..self.variants.len());
+        let position = rng.gen_range(0..reference.len());
+
+        let mut content = self.variants[item].clone();
+
+        let swap_endianness = rng.gen_bool(0.5);
+
+        if swap_endianness {
+            content.reverse()
+        }
+
+        crate::sample::Patch::Replacement { position, content }
+    }
+}
+
+impl KnownBytes {
+    pub fn new() -> Self {
+        Self {
+            variants: vec![
+                vec![0x00],
+                vec![0xff],
+                vec![0x00, 0x00],
+                vec![0xff, 0xff],
+                vec![0x00, 0x00, 0x00, 0x00],
+                vec![0xff, 0xff, 0xff, 0xff],
+                vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+                vec![0x7f],
+                vec![0x01],
+                vec![0xf0],
+                vec![0x00, 0x00, 0x00, 0x80],
+                vec![0x00, 0x00, 0x00, 0x40],
+            ],
+        }
+    }
+}

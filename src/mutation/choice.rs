@@ -25,7 +25,7 @@ impl Mutator for MutationChooser {
         let mut rng = rand::thread_rng();
         loop {
             let m1 = rng.gen_bool(0.7);
-            if m1 {
+            if m1 && !self.tree.is_empty() {
                 let idx = rng.gen_range(0..self.tree.len());
 
                 let mutator = &self.tree[idx];
