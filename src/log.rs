@@ -37,13 +37,11 @@ macro_rules! log{
 pub(crate) use log;
 
 pub fn pull_messages(n: usize) -> Vec<String> {
-    let buffer = BUFFER.lock().unwrap();
+    let mut items = {
+        let buffer = BUFFER.lock().unwrap();
 
-    buffer
-        .iter()
-        .rev()
-        .take(n)
-        .rev()
-        .map(Clone::clone)
-        .collect_vec()
+        buffer.iter().rev().take(n).map(Clone::clone).collect_vec()
+    };
+    items.reverse();
+    items
 }
