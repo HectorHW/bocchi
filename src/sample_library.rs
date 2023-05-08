@@ -7,9 +7,11 @@ pub trait Library {
     type Key: Clone + Eq + CoverageScore;
     type Item: Sized + Clone;
 
-    fn find_existing(&self, reference: &Self::Key) -> Option<&Self::Item>;
+    fn find_existing(&self, reference: &Self::Key) -> Option<&LibraryEntry<Self::Item>>;
 
     fn upsert(&mut self, key: Self::Key, object: Self::Item);
+
+    fn add_name(&mut self, key: &Self::Key, name: String);
 
     fn pick_random(&self) -> Self::Item;
 
@@ -40,8 +42,8 @@ impl<K: Clone + CoverageScore + Eq, V: Clone + SizeScore> Library for VectorLibr
     type Item = V;
     type Key = K;
 
-    fn find_existing(&self, reference: &Self::Key) -> Option<&Self::Item> {
-        self.buffer.get(reference).map(|item| &item.item)
+    fn find_existing(&self, reference: &Self::Key) -> Option<&LibraryEntry<Self::Item>> {
+        self.buffer.get(reference)
     }
 
     fn upsert(&mut self, key: Self::Key, object: Self::Item) {
@@ -61,6 +63,14 @@ impl<K: Clone + CoverageScore + Eq, V: Clone + SizeScore> Library for VectorLibr
             );
             self.items.push(object)
         }
+    }
+
+    fn add_name(&mut self, key: &Self::Key, name: String) {
+        let Some(existing) = self.buffer.get_mut(key) else{
+            panic!("called add_name without prior upsert");
+        };
+
+        existing.unique_name = Some(name);
     }
 
     fn pick_random(&self) -> Self::Item {

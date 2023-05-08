@@ -13,6 +13,9 @@ pub struct FuzzConfig {
 
     #[serde(default)]
     pub generation: GenerationOptions,
+
+    #[serde(default)]
+    pub output: OutputOptions,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -90,6 +93,19 @@ impl ExitCodeFilter {
 
     pub fn accepts_any(&self) -> bool {
         matches!(self, ExitCodeFilter::Any)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct OutputOptions {
+    pub directory: String,
+}
+
+impl Default for OutputOptions {
+    fn default() -> Self {
+        Self {
+            directory: "output".to_string(),
+        }
     }
 }
 

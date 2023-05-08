@@ -1,9 +1,11 @@
 use std::{
+    path::{Path, PathBuf},
     process,
     thread::{self, JoinHandle},
     time::Instant,
 };
 
+use rand::Rng;
 use ringbuffer::RingBufferWrite;
 
 use crate::{
@@ -12,14 +14,40 @@ use crate::{
     execution::{self},
     fuzzing::Fuzzer,
     mutation::build_mutator,
+    sample_library::Library as LibT,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
+
+fn get_unique_name() -> String {
+    let mut rng = rand::thread_rng();
+
+    (0..6).map(|_| format!("{:x}", rng.gen::<u8>())).collect()
+}
+
+fn get_crash_path(config: &'static FuzzConfig, name: &str) -> PathBuf {
+    PathBuf::from(&config.output.directory).join(name)
+}
+
+fn save_crash(sample: &crate::sample::Sample, path: PathBuf) -> Result<(), std::io::Error> {
+    let dir = {
+        let mut path = path.clone();
+
+        path.pop();
+
+        path
+    };
+
+    if !dir.exists() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, &sample.result)
+}
 
 pub fn spawn_fuzzer(
     config: &'static FuzzConfig,
     library: AM<Library>,
     state: AM<State>,
-) -> Result<JoinHandle<()>, anyhow::Error> {
+) -> Result<JoinHandle<Result<(), std::io::Error>>, anyhow::Error> {
     let grammar_content = match std::fs::read_to_string(&config.grammar.path) {
         Ok(content) => content,
         Err(e) => {
@@ -67,7 +95,7 @@ pub fn spawn_fuzzer(
         let mutator = build_mutator(config, &grammar);
 
         let evaluator = execution::TraceEvaluator::new(mapping, config.stdin.pass_style);
-        let mut fuzzer = Fuzzer::new(mutator, library, evaluator);
+        let mut fuzzer = Fuzzer::new(mutator, library.clone(), evaluator);
 
         fuzzer.put_seed(seed).unwrap();
 
@@ -80,6 +108,7 @@ pub fn spawn_fuzzer(
                 }
             };
 
+            let mut library = library.lock().unwrap();
             let mut state = state.lock().unwrap();
 
             state.tested_samples += 1;
@@ -91,11 +120,41 @@ pub fn spawn_fuzzer(
                     state.last_new_path = Some(Instant::now());
                     if let execution::ExecResult::Signal = result.trace.result {
                         state.last_unique_crash = Some(Instant::now());
-                        crate::log!("found new crash");
+
+                        let name = get_unique_name();
+
+                        let path = get_crash_path(config, &name);
+
+                        library.add_name(&result.trace, name.clone());
+
+                        save_crash(&result.sample, path.clone())?;
+                        crate::log!(
+                            "found new crash and saved it as {}",
+                            path.into_os_string().into_string().unwrap()
+                        );
                     }
                 }
                 crate::fuzzing::RunResultStatus::SizeImprovement => {
                     state.improvements += 1;
+
+                    if let execution::ExecResult::Signal = result.trace.result {
+                        let name = library
+                            .find_existing(&result.trace)
+                            .as_ref()
+                            .unwrap()
+                            .unique_name
+                            .as_ref()
+                            .unwrap()
+                            .clone();
+
+                        let path = get_crash_path(config, &name);
+
+                        save_crash(&result.sample, path.clone())?;
+                        crate::log!(
+                            "found smaller example for crash {}",
+                            path.into_os_string().into_string().unwrap()
+                        );
+                    }
                 }
             }
 
@@ -107,5 +166,7 @@ pub fn spawn_fuzzer(
                 }
             }
         }
+
+        Ok(())
     }))
 }

@@ -93,7 +93,7 @@ where
             let mut library = self.library.lock().unwrap();
 
             if let Some(existing) = library.find_existing(&tested.result) {
-                if existing.get_size_score() > tested.sample.get_size_score() {
+                if existing.item.get_size_score() > tested.sample.get_size_score() {
                     library.upsert(tested.result.clone(), tested.sample.clone());
                     RunResultStatus::SizeImprovement
                 } else {
