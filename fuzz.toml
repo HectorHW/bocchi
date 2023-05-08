@@ -1,10 +1,10 @@
 [binary]
-path = "./samples/vuln"
-#interesting_codes = [20, 255]
+path = "samples/exif/exif"
+pass_style = "file"
 
-[grammar]
-path = "input.grammar"
+[input]
+#grammar = "samples/exif/input.grammar"
+seeds = "samples/exif/examples"
 
-
-[stdin]
-pass_style = "stdin"
+[output]
+directory = "output"

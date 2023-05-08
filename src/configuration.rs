@@ -6,13 +6,7 @@ use serde_derive::Deserialize;
 pub struct FuzzConfig {
     pub binary: BinaryConfig,
 
-    pub grammar: GrammarOptions,
-
-    #[serde(default)]
-    pub stdin: StdinFuzzingOptions,
-
-    #[serde(default)]
-    pub generation: GenerationOptions,
+    pub input: InputOptions,
 
     #[serde(default)]
     pub output: OutputOptions,
@@ -21,20 +15,21 @@ pub struct FuzzConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct BinaryConfig {
     pub path: String,
+    pub pass_style: PassStyle,
 
     #[serde(default)]
     pub interesting_codes: ExitCodeFilter,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct GrammarOptions {
-    pub path: String,
+#[serde(untagged)]
+pub enum InputOptions {
+    Grammar { grammar: String },
+    Seeds { seeds: String },
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Default)]
-pub struct StdinFuzzingOptions {
-    pub pass_style: PassStyle,
-}
+pub struct StdinFuzzingOptions {}
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -42,31 +37,6 @@ pub enum PassStyle {
     #[default]
     Stdin,
     File,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct GenerationOptions {
-    #[serde(default = "default_population_size")]
-    pub population: usize,
-    #[serde(default = "default_sample_limit")]
-    pub sample_limit: usize,
-}
-
-impl Default for GenerationOptions {
-    fn default() -> Self {
-        Self {
-            population: default_population_size(),
-            sample_limit: default_sample_limit(),
-        }
-    }
-}
-
-fn default_population_size() -> usize {
-    1_000
-}
-
-fn default_sample_limit() -> usize {
-    100
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]

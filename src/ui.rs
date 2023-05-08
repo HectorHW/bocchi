@@ -109,12 +109,22 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
     }
 
     fn draw_outer_frame(&mut self, frame: &mut Frame<B>, target: Rect) {
-        let block = Block::default()
-            .title(format!(
-                "bocchifuzz running {} with grammar {}",
-                self.config.binary.path, self.config.grammar.path
-            ))
-            .borders(Borders::ALL);
+        let title = match &self.config.input {
+            crate::configuration::InputOptions::Grammar { grammar } => {
+                format!(
+                    "bocchifuzz running {} with grammar {}",
+                    self.config.binary.path, grammar
+                )
+            }
+            crate::configuration::InputOptions::Seeds { seeds } => {
+                format!(
+                    "bocchifuzz running {} with seeds read from {}",
+                    self.config.binary.path, seeds
+                )
+            }
+        };
+
+        let block = Block::default().title(title).borders(Borders::ALL);
         frame.render_widget(block, target);
     }
 

@@ -1,10 +1,11 @@
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     process,
     thread::{self, JoinHandle},
     time::Instant,
 };
 
+use anyhow::{anyhow, Context};
 use rand::Rng;
 use ringbuffer::RingBufferWrite;
 
@@ -13,7 +14,9 @@ use crate::{
     configuration::FuzzConfig,
     execution::{self},
     fuzzing::Fuzzer,
+    grammar::{generation::TreeNodeItem, Grammar, TreeNode},
     mutation::build_mutator,
+    sample::Sample,
     sample_library::Library as LibT,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
@@ -48,33 +51,6 @@ pub fn spawn_fuzzer(
     library: AM<Library>,
     state: AM<State>,
 ) -> Result<JoinHandle<Result<(), std::io::Error>>, anyhow::Error> {
-    let grammar_content = match std::fs::read_to_string(&config.grammar.path) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("error reading grammar file: {e}");
-            process::exit(exitcode::IOERR);
-        }
-    };
-
-    let grammar = match crate::grammar::parse_grammar(&grammar_content) {
-        Ok(grammar) => grammar,
-        Err(e) => {
-            eprintln!("errors while parsing grammar");
-            eprintln!("{e}");
-            process::exit(exitcode::CONFIG)
-        }
-    };
-
-    let depth_limit = 30;
-
-    let generator = crate::grammar::generation::Generator::new(grammar.clone(), depth_limit);
-
-    let initial = generator.generate();
-
-    let seed = crate::sample::Sample::new(initial.clone(), vec![]);
-
-    crate::log!("generated initial sample of size {}", initial.folded.len());
-
     let path = config.binary.path.clone();
 
     let mapping = match analysys::analyze_binary(path) {
@@ -91,13 +67,83 @@ pub fn spawn_fuzzer(
         mapping.functions.len()
     );
 
+    let (seeds, grammar) = match &config.input {
+        crate::configuration::InputOptions::Grammar { grammar } => {
+            crate::log!("fuzzer started in grammar mode");
+
+            let grammar_content = match std::fs::read_to_string(grammar) {
+                Ok(content) => content,
+                Err(e) => {
+                    eprintln!("error reading grammar file: {e}");
+                    process::exit(exitcode::IOERR);
+                }
+            };
+
+            let grammar = match crate::grammar::parse_grammar(&grammar_content) {
+                Ok(grammar) => grammar,
+                Err(e) => {
+                    eprintln!("errors while parsing grammar");
+                    eprintln!("{e}");
+                    process::exit(exitcode::CONFIG)
+                }
+            };
+
+            let depth_limit = 30;
+
+            let generator =
+                crate::grammar::generation::Generator::new(grammar.clone(), depth_limit);
+
+            let initial = generator.generate();
+
+            crate::log!("generated initial sample of size {}", initial.folded.len());
+
+            (vec![crate::sample::Sample::new(initial, vec![])], grammar)
+        }
+        crate::configuration::InputOptions::Seeds { seeds: s } => {
+            crate::log!("fuzzer started in binary mode");
+
+            let mut seeds = vec![];
+
+            for subitem in std::fs::read_dir(s).context("reading seeds directory")? {
+                let dir_entry = subitem?;
+
+                let content = std::fs::read(dir_entry.path()).with_context(|| {
+                    format!(
+                        "while reading seed at {}",
+                        dir_entry.path().as_os_str().to_string_lossy()
+                    )
+                })?;
+
+                let root = TreeNodeItem::HexString(content);
+                let tree: TreeNode = root.into();
+                let folded_tree = tree.fold_into_sample();
+
+                let sample = Sample::new(folded_tree, vec![]);
+
+                seeds.push(sample);
+            }
+
+            if seeds.is_empty() {
+                return Err(anyhow!(
+                    "got zero samples after looking in configured seeds directory"
+                ));
+            }
+
+            crate::log!("loaded {} seed(s) from {}", seeds.len(), s);
+
+            (seeds, Grammar::empty())
+        }
+    };
+
     Ok(thread::spawn(move || {
         let mutator = build_mutator(config, &grammar);
 
-        let evaluator = execution::TraceEvaluator::new(mapping, config.stdin.pass_style);
+        let evaluator = execution::TraceEvaluator::new(mapping, config.binary.pass_style);
         let mut fuzzer = Fuzzer::new(mutator, library.clone(), evaluator);
 
-        fuzzer.put_seed(seed).unwrap();
+        for seed in seeds {
+            fuzzer.put_seed(seed).unwrap();
+        }
 
         while unsafe { FUZZER_RUNNNIG.load(std::sync::atomic::Ordering::SeqCst) } {
             let result = match fuzzer.run_once() {

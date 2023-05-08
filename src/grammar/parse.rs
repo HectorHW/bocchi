@@ -155,14 +155,16 @@ peg::parser! {
 
             }
 
-
-
-
-
-
-
-
         rule _() = quiet!{[' ' | '\r' | '\n' | '\t']*}
 
+    }
+}
+
+impl Grammar {
+    pub fn empty() -> Self {
+        Self {
+            options: Flags::new(Default::default()),
+            productions: Default::default(),
+        }
     }
 }
