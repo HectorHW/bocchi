@@ -12,6 +12,7 @@ use crossterm::{
 };
 use humantime::format_duration;
 use itertools::Itertools;
+use ringbuffer::{RingBuffer, RingBufferExt};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -132,6 +133,7 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
                 "  - crashes".to_string(),
                 self.state.total_crashes.to_string(),
             ),
+            ("execution speed".to_string(), self.get_execution_speed()),
             (
                 "size improvements".to_string(),
                 self.state.improvements.to_string(),
@@ -203,6 +205,23 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
         ]
     }
 
+    fn get_execution_speed(&mut self) -> String {
+        let now = Instant::now();
+
+        self.state
+            .executions
+            .front()
+            .map(|&time| {
+                let items = self.state.executions.len() as f64;
+
+                let duration = (now - time).as_secs_f64();
+
+                items / duration
+            })
+            .map(|execs| format!("{:.1}/s", execs))
+            .unwrap_or_else(|| "n/a".to_string())
+    }
+
     fn write_stats(frame: &mut Frame<B>, target: Rect, stats: Vec<(String, String)>) {
         let rows = stats
             .into_iter()
@@ -262,8 +281,8 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             .constraints(
                 [
                     Constraint::Percentage(30),
-                    Constraint::Percentage(40),
-                    Constraint::Percentage(30),
+                    Constraint::Percentage(45),
+                    Constraint::Percentage(25),
                 ]
                 .as_ref(),
             )

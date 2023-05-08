@@ -16,6 +16,7 @@ pub struct State {
     pub start_time: Instant,
     pub last_unique_crash: Option<Instant>,
     pub last_new_path: Option<Instant>,
+    pub executions: ringbuffer::AllocRingBuffer<Instant>,
 }
 
 impl State {
@@ -29,6 +30,7 @@ impl State {
             start_time: Instant::now(),
             last_unique_crash: None,
             last_new_path: None,
+            executions: ringbuffer::AllocRingBuffer::with_capacity(512),
         }
     }
 }

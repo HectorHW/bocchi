@@ -4,6 +4,8 @@ use std::{
     time::Instant,
 };
 
+use ringbuffer::RingBufferWrite;
+
 use crate::{
     analysys,
     configuration::FuzzConfig,
@@ -82,6 +84,7 @@ pub fn spawn_fuzzer(
             let mut state = state.lock().unwrap();
 
             state.tested_samples += 1;
+            state.executions.push(Instant::now());
 
             match result.status {
                 crate::fuzzing::RunResultStatus::Nothing => {}
@@ -89,6 +92,7 @@ pub fn spawn_fuzzer(
                     state.last_new_path = Some(Instant::now());
                     if let execution::ExecResult::Signal = result.trace.result {
                         state.last_unique_crash = Some(Instant::now());
+                        crate::log!("found new crash");
                     }
                 }
                 crate::fuzzing::RunResultStatus::SizeImprovement => {
@@ -101,8 +105,6 @@ pub fn spawn_fuzzer(
                 execution::ExecResult::Code(_) => state.total_nonzero += 1,
                 execution::ExecResult::Signal => {
                     state.total_crashes += 1;
-
-                    crate::log!("found new crash")
                 }
             }
         }
