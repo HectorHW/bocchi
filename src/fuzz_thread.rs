@@ -196,10 +196,7 @@ pub fn spawn_fuzzer(
                         let path = get_crash_path(config, &name);
 
                         save_crash(&result.sample, path.clone())?;
-                        crate::log!(
-                            "found smaller example for crash {}",
-                            path.into_os_string().into_string().unwrap()
-                        );
+                        crate::log!("found smaller example for crash {}", name);
                     }
                 }
             }

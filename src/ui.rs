@@ -118,7 +118,7 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             }
             crate::configuration::InputOptions::Seeds { seeds } => {
                 format!(
-                    "bocchifuzz running {} with seeds read from {}",
+                    "bocchifuzz running {} with seeds folder {}",
                     self.config.binary.path, seeds
                 )
             }
