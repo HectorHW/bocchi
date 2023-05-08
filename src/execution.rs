@@ -1,9 +1,8 @@
 use std::{
     collections::HashMap,
     fmt::Display,
-    fs::File,
-    io::{Read, Write},
-    os::fd::{AsRawFd, FromRawFd},
+    io::Write,
+    os::fd::AsRawFd,
     path::PathBuf,
     process::{self, Child, Command, Stdio},
 };
@@ -124,14 +123,6 @@ pub type DetailedTrace = Vec<usize>;
 impl crate::sample_library::CoverageScore for RunTrace {
     fn get_score(&self) -> f64 {
         self.trajectory.len() as f64 + 0.1
-    }
-}
-
-impl crate::sample_library::ComparisonKey for RunTrace {
-    type Key = RunTrace;
-
-    fn get_key(&self) -> &Self::Key {
-        self
     }
 }
 

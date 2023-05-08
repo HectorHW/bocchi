@@ -147,13 +147,12 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             (
                 "unique exit codes".to_string(),
                 self.library
-                    .keys()
                     .iter()
-                    .filter_map(|run| {
+                    .filter_map(|(trace, _sample)| {
                         if let RunTrace {
                             result: ExecResult::Code(code),
                             ..
-                        } = run
+                        } = trace
                         {
                             Some(code)
                         } else {
@@ -167,8 +166,8 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             (
                 "unique crashes".to_string(),
                 self.library
-                    .keys()
                     .iter()
+                    .map(|p| p.0)
                     .filter(|run| matches!(run.result, ExecResult::Signal))
                     .count()
                     .to_string(),
@@ -301,26 +300,6 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
         Self::write_stats_in_frame(frame, layout[2], unique_stats, "uniques");
     }
 
-    fn format_crash(items: &[usize], free_space: usize) -> String {
-        let mut items = items.to_owned();
-        if items.len() >= 2 && items[items.len() - 1] == items[items.len() - 2] {
-            items.pop();
-        }
-        let formatted = items.iter().map(|n| format!("{n:x}")).join(" ");
-
-        if formatted.len() + 2 >= free_space {
-            format!(
-                "...{}",
-                String::from_utf8(
-                    formatted.as_bytes()[formatted.len() - free_space + 10..].to_owned()
-                )
-                .unwrap()
-            )
-        } else {
-            formatted
-        }
-    }
-
     fn format_log(&self, space: Rect) -> Vec<String> {
         let log = crate::log::pull_messages(space.height as usize)
             .into_iter()
@@ -330,19 +309,6 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
             .iter()
             .take(space.height as usize)
             .map(|line| line.to_string())
-            .collect_vec()
-    }
-
-    fn format_crashes(&mut self, free_space: usize) -> Vec<String> {
-        self.library
-            .keys()
-            .iter()
-            .zip(self.library.values().iter())
-            .filter(|(k, _v)| k.result == ExecResult::Signal)
-            .filter_map(|(crash_trace, _sample)| {
-                crate::sample_library::Library::get_detailed_trace(&*self.library, crash_trace)
-                    .map(|crash| Self::format_crash(crash, free_space))
-            })
             .collect_vec()
     }
 

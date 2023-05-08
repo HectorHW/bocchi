@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    execution::{self, DetailedTrace, ExecResult},
-    sample_library::{ComparisonKey, CoverageScore, Library, SizeScore},
+    execution::{self},
+    sample_library::{CoverageScore, Library, SizeScore},
 };
 
 pub trait Mutator {
@@ -37,14 +37,6 @@ pub trait Evaluator {
 pub struct TestedSample<Sample, EvalResult> {
     pub sample: Sample,
     pub result: EvalResult,
-}
-
-impl<S, E: Eq> ComparisonKey for TestedSample<S, E> {
-    type Key = E;
-
-    fn get_key(&self) -> &Self::Key {
-        &self.result
-    }
 }
 
 impl<S, E: CoverageScore> CoverageScore for TestedSample<S, E> {
@@ -93,13 +85,6 @@ where
         }
     }
 
-    fn get_detailed_trace(
-        &mut self,
-        sample: &crate::sample::Sample,
-    ) -> Result<DetailedTrace, anyhow::Error> {
-        self.evaluator.trace_detailed(sample.clone())
-    }
-
     fn put_in_library(
         &mut self,
         tested: TestedSample<crate::sample::Sample, crate::execution::RunTrace>,
@@ -119,14 +104,6 @@ where
 
                 RunResultStatus::New
             }
-        };
-
-        if let (RunResultStatus::New, ExecResult::Signal) = (&status, &tested.result.result) {
-            let detailed_trace = self.get_detailed_trace(&tested.sample)?;
-
-            let mut library = self.library.lock().unwrap();
-
-            library.attach_detailed_trace(&tested.result, detailed_trace);
         };
 
         Ok(RunResult {

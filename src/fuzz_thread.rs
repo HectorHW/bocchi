@@ -11,7 +11,6 @@ use crate::{
     configuration::FuzzConfig,
     execution::{self},
     fuzzing::Fuzzer,
-    log,
     mutation::build_mutator,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
