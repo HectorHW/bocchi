@@ -9,6 +9,7 @@ use crate::{
     configuration::FuzzConfig,
     execution::{self},
     fuzzing::Fuzzer,
+    log,
     mutation::build_mutator,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
@@ -43,7 +44,7 @@ pub fn spawn_fuzzer(
 
     let seed = crate::sample::Sample::new(initial.clone(), vec![]);
 
-    println!("initial: {}", String::from_utf8_lossy(&initial.folded));
+    crate::log!("generated initial sample of size {}", initial.folded.len());
 
     let path = config.binary.path.clone();
 
@@ -55,6 +56,11 @@ pub fn spawn_fuzzer(
             process::exit(exitcode::DATAERR)
         }
     };
+
+    crate::log!(
+        "extracted {} functions from executable",
+        mapping.functions.len()
+    );
 
     Ok(thread::spawn(move || {
         let mutator = build_mutator(config, &grammar);
@@ -93,7 +99,11 @@ pub fn spawn_fuzzer(
             match result.trace.result {
                 execution::ExecResult::Code(0) => state.total_working += 1,
                 execution::ExecResult::Code(_) => state.total_nonzero += 1,
-                execution::ExecResult::Signal => state.total_crashes += 1,
+                execution::ExecResult::Signal => {
+                    state.total_crashes += 1;
+
+                    crate::log!("found new crash")
+                }
             }
         }
     }))

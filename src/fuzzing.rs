@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    execution::{self, DetailedTrace},
+    execution::{self, DetailedTrace, ExecResult},
     sample_library::{ComparisonKey, CoverageScore, Library, SizeScore},
 };
 
@@ -121,7 +121,7 @@ where
             }
         };
 
-        if let RunResultStatus::New = status {
+        if let (RunResultStatus::New, ExecResult::Signal) = (&status, &tested.result.result) {
             let detailed_trace = self.get_detailed_trace(&tested.sample)?;
 
             let mut library = self.library.lock().unwrap();

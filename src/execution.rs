@@ -171,7 +171,7 @@ impl FunctionTracer {
     }
 }
 
-trait TraceRecorder: Default {
+pub trait TraceRecorder: Default {
     /// add point to trace, indicate with bool if we want to get more of this point
     fn add_point(&mut self, point: usize) -> bool;
 

@@ -302,6 +302,18 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
         }
     }
 
+    fn format_log(&self, space: Rect) -> Vec<String> {
+        let log = crate::log::pull_messages(space.height as usize)
+            .into_iter()
+            .join("\n");
+
+        textwrap::wrap(&log, space.width as usize)
+            .iter()
+            .take(space.height as usize)
+            .map(|line| line.to_string())
+            .collect_vec()
+    }
+
     fn format_crashes(&mut self, free_space: usize) -> Vec<String> {
         self.library
             .keys()
@@ -316,12 +328,7 @@ impl<'m, B: Backend + std::io::Write> TerminalInstance<'m, B> {
     }
 
     fn write_right_panel(&mut self, frame: &mut Frame<B>, target: Rect) {
-        Self::write_list_in_frame(
-            frame,
-            target,
-            self.format_crashes(target.width as usize),
-            "crashes",
-        )
+        Self::write_list_in_frame(frame, target, self.format_log(target), "messages")
     }
 }
 

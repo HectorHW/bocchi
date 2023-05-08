@@ -22,7 +22,10 @@ mod sample;
 mod sample_library;
 mod ui;
 
+mod log;
 mod state;
+
+pub(crate) use log::log;
 
 fn main() {
     unsafe {
