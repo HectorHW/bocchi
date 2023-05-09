@@ -179,9 +179,10 @@ impl MutateBytes for CopyFragment {
         let patch_content = {
             let item = nonempty[rng.gen_range(0..nonempty.len())];
 
-            let random_position = rng.gen_range(0..item.len() - 1);
+            // item.len >= 1
+            let patch_size = rng.gen_range(1..=item.len().min(self.max_size));
 
-            let patch_size = rng.gen_range(1..item.len() - random_position);
+            let random_position = rng.gen_range(0..=item.len().saturating_sub(patch_size));
 
             item[random_position..random_position + patch_size].to_vec()
         };
