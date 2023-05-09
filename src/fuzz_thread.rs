@@ -16,7 +16,7 @@ use crate::{
     fuzzing::Fuzzer,
     grammar::Grammar,
     mutation::build_mutator,
-    sample::{Sample, TreeNode, TreeNodeItem},
+    sample::{TreeNode, TreeNodeItem},
     sample_library::Library as LibT,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
@@ -181,7 +181,7 @@ pub fn spawn_fuzzer(
                         );
                     }
                 }
-                crate::fuzzing::RunResultStatus::SizeImprovement => {
+                crate::fuzzing::RunResultStatus::SizeImprovement(change) => {
                     state.improvements += 1;
 
                     if let execution::ExecResult::Signal = result.trace.result {
@@ -197,7 +197,7 @@ pub fn spawn_fuzzer(
                         let path = get_crash_path(config, &name);
 
                         save_crash(&result.sample, path.clone())?;
-                        crate::log!("found smaller example for crash {}", name);
+                        crate::log!("found smaller example for crash {name} (-{change})");
                     }
                 }
             }

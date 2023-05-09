@@ -68,7 +68,7 @@ pub struct RunResult {
 pub enum RunResultStatus {
     Nothing,
     New,
-    SizeImprovement,
+    SizeImprovement(usize),
 }
 
 impl<Lib, Mut, Eval, MutInfo> Fuzzer<Lib, Mut, Eval, MutInfo>
@@ -94,8 +94,10 @@ where
 
             if let Some(existing) = library.find_existing(&tested.result) {
                 if existing.item.get_size_score() > tested.sample.get_size_score() {
+                    let improvement =
+                        existing.item.get_size_score() - tested.sample.get_size_score();
                     library.upsert(tested.result.clone(), tested.sample.clone());
-                    RunResultStatus::SizeImprovement
+                    RunResultStatus::SizeImprovement(improvement)
                 } else {
                     RunResultStatus::Nothing
                 }

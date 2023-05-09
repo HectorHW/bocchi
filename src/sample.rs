@@ -195,7 +195,7 @@ impl Sample {
 }
 
 impl SizeScore for Sample {
-    fn get_size_score(&self) -> f64 {
-        self.folded.len() as f64
+    fn get_size_score(&self) -> usize {
+        self.folded.len()
     }
 }

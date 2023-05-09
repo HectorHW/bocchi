@@ -35,7 +35,7 @@ pub trait CoverageScore {
 }
 
 pub trait SizeScore {
-    fn get_size_score(&self) -> f64;
+    fn get_size_score(&self) -> usize;
 }
 
 impl<K: Clone + CoverageScore + Eq, V: Clone + SizeScore> Library for VectorLibrary<K, V> {
