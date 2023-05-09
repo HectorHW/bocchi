@@ -1,11 +1,12 @@
+use itertools::Itertools;
 use lazy_static::lazy_static;
 
 use rand::{distributions::WeightedIndex, Rng};
 
-use crate::sample::{Patch, PatchKind};
+use crate::sample::{Patch, PatchKind, Sample};
 
 pub trait MutateBytes {
-    fn mutate(&self, reference: &[u8]) -> Patch;
+    fn mutate(&self, reference: &[u8], library: &[Sample]) -> Patch;
 }
 
 lazy_static! {
@@ -25,7 +26,7 @@ fn get_random_position(buffer: &[u8]) -> usize {
 pub struct BitFlip {}
 
 impl MutateBytes for BitFlip {
-    fn mutate(&self, reference: &[u8]) -> Patch {
+    fn mutate(&self, reference: &[u8], _library: &[Sample]) -> Patch {
         let mut rng = rand::thread_rng();
 
         let random_bit = 1 << (rng.gen_range(0..8));
@@ -54,7 +55,7 @@ pub struct Erasure {
 }
 
 impl MutateBytes for Erasure {
-    fn mutate(&self, reference: &[u8]) -> Patch {
+    fn mutate(&self, reference: &[u8], _library: &[Sample]) -> Patch {
         let mut rng = rand::thread_rng();
 
         let random_size = rng.gen_range(1..=self.max_size);
@@ -72,7 +73,7 @@ pub struct KnownBytes {
 }
 
 impl MutateBytes for KnownBytes {
-    fn mutate(&self, reference: &[u8]) -> Patch {
+    fn mutate(&self, reference: &[u8], _library: &[Sample]) -> Patch {
         if reference.is_empty() {
             return Patch {
                 position: 0,
@@ -125,7 +126,7 @@ pub struct Garbage {
 }
 
 impl MutateBytes for Garbage {
-    fn mutate(&self, reference: &[u8]) -> Patch {
+    fn mutate(&self, reference: &[u8], _library: &[Sample]) -> Patch {
         let mut rng = rand::thread_rng();
 
         let size = rng.gen_range(1..=self.max_size);
@@ -143,6 +144,57 @@ impl MutateBytes for Garbage {
                 position,
                 kind: PatchKind::Replacement(content),
             }
+        }
+    }
+}
+
+pub struct CopyFragment {
+    pub max_size: usize,
+}
+
+impl MutateBytes for CopyFragment {
+    fn mutate(&self, reference: &[u8], library: &[Sample]) -> Patch {
+        assert!(!library.is_empty());
+
+        let mut rng = rand::thread_rng();
+
+        let nonempty = library
+            .iter()
+            .filter_map(|item| {
+                if !item.get_folded().is_empty() {
+                    Some(item.get_folded())
+                } else {
+                    None
+                }
+            })
+            .collect_vec();
+
+        if nonempty.is_empty() {
+            return Patch {
+                position: 0,
+                kind: PatchKind::Replacement(vec![]),
+            };
+        }
+
+        let patch_content = {
+            let item = nonempty[rng.gen_range(0..nonempty.len())];
+
+            let random_position = rng.gen_range(0..item.len() - 1);
+
+            let patch_size = rng.gen_range(1..item.len() - random_position);
+
+            item[random_position..random_position + patch_size].to_vec()
+        };
+
+        let insertion_position = if reference.is_empty() {
+            0
+        } else {
+            rng.gen_range(0..reference.len())
+        };
+
+        Patch {
+            position: insertion_position,
+            kind: PatchKind::Insertion(patch_content),
         }
     }
 }

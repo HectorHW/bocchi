@@ -43,7 +43,7 @@ impl Mutator for MutationChooser {
 
                 let mutator = &self.binary[idx];
 
-                let new_patch = mutator.mutate(sample.get_folded());
+                let new_patch = mutator.mutate(sample.get_folded(), library);
 
                 let patched = sample.apply_patch(new_patch);
 

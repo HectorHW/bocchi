@@ -12,16 +12,17 @@ use crate::{
 };
 
 use self::{
-    binary_level::{BitFlip, Erasure, Garbage, KnownBytes, MutateBytes},
+    binary_level::{BitFlip, CopyFragment, Erasure, Garbage, KnownBytes, MutateBytes},
     tree_level::{Resample, TreeRegrow},
 };
 
 pub fn build_mutator(config: &FuzzConfig, grammar: &Grammar) -> MutationChooser {
     let binary: Vec<Box<dyn MutateBytes>> = vec![
         Box::new(BitFlip {}),
-        Box::new(Erasure { max_size: 50 }),
+        Box::new(Erasure { max_size: 100 }),
         Box::new(KnownBytes::new()),
-        Box::new(Garbage { max_size: 50 }),
+        Box::new(Garbage { max_size: 20 }),
+        Box::new(CopyFragment { max_size: 100 }),
     ];
 
     let tree: Vec<Box<dyn MutateTree>> = if matches!(config.input, InputOptions::Grammar { .. }) {
