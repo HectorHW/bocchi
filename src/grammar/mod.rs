@@ -6,9 +6,6 @@ use parse::grammar_parser::grammar;
 pub use parse::Grammar;
 pub use parse::Token;
 
-pub use generation::GrammarSample;
-pub use generation::TreeNode;
-
 pub fn parse_grammar(content: &str) -> Result<Grammar, anyhow::Error> {
     let parsed = grammar(content)?;
 

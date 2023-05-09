@@ -1,110 +1,10 @@
-use std::io::Write;
-
 use rand::Rng;
 use rand_regex::Regex;
 
-use crate::grammar::{Grammar, Token};
-
-#[derive(Clone, Debug)]
-pub struct ProductionApplication {
-    pub rule_name: String,
-    pub production_variant: usize,
-    pub items: Vec<TreeNode>,
-}
-
-#[derive(Clone, Debug)]
-pub struct TreeNode {
-    pub start: usize,
-    pub size: usize,
-    pub item: TreeNodeItem,
-}
-
-#[derive(Clone, Debug)]
-pub enum TreeNodeItem {
-    ProductionApplication(ProductionApplication),
-    String(String),
-    HexString(Vec<u8>),
-    Regex(String),
-}
-
-impl TreeNodeItem {
-    fn find_tree_span(&self) -> usize {
-        match self {
-            TreeNodeItem::ProductionApplication(p) => p.items.iter().map(|item| item.size).sum(),
-            TreeNodeItem::String(s) => s.len(),
-            TreeNodeItem::HexString(s) => s.len(),
-            TreeNodeItem::Regex(s) => s.len(),
-        }
-    }
-
-    fn with_offset(self, offset: usize) -> TreeNode {
-        TreeNode {
-            start: offset,
-            size: self.find_tree_span(),
-            item: self,
-        }
-    }
-}
-
-impl From<TreeNodeItem> for TreeNode {
-    fn from(value: TreeNodeItem) -> Self {
-        TreeNode {
-            start: 0,
-            size: value.find_tree_span(),
-            item: value,
-        }
-    }
-}
-
-impl TreeNode {
-    /// write this tree to buffer setting indices in the process
-    pub fn fold(&mut self, buffer: &mut Vec<u8>) {
-        let before = buffer.len();
-        match &mut self.item {
-            TreeNodeItem::ProductionApplication(pa) => {
-                for item in &mut pa.items {
-                    item.fold(buffer);
-                }
-            }
-            TreeNodeItem::String(s) => {
-                buffer.write_all(s.as_bytes()).unwrap();
-            }
-            TreeNodeItem::HexString(s) => {
-                buffer.write_all(s).unwrap();
-            }
-            TreeNodeItem::Regex(re) => {
-                buffer.write_all(re.as_bytes()).unwrap();
-            }
-        }
-        self.start = before;
-        self.size = buffer.len() - before;
-    }
-
-    pub fn fold_into_sample(mut self) -> GrammarSample {
-        let mut buf = vec![];
-
-        self.fold(&mut buf);
-
-        GrammarSample {
-            tree: self,
-            folded: buf,
-        }
-    }
-}
-
-impl From<TreeNode> for GrammarSample {
-    fn from(mut val: TreeNode) -> Self {
-        let mut folded = vec![];
-        val.fold(&mut folded);
-        GrammarSample { tree: val, folded }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GrammarSample {
-    pub tree: TreeNode,
-    pub folded: Vec<u8>,
-}
+use crate::{
+    grammar::{Grammar, Token},
+    sample::{GrammarSample, ProductionApplication, TreeNode, TreeNodeItem},
+};
 
 pub struct Generator {
     grammar: Grammar,
@@ -120,16 +20,13 @@ impl Generator {
     }
 
     pub fn generate(&self) -> GrammarSample {
-        let mut tree = loop {
+        let tree = loop {
             if let Ok(res) = self.generate_production("root", self.depth_limit) {
                 break res;
             }
         };
 
-        let mut folded = vec![];
-        tree.fold(&mut folded);
-
-        GrammarSample { tree, folded }
+        tree.into()
     }
 
     pub fn generate_of_type(
@@ -159,16 +56,16 @@ impl Generator {
                     self.generate_production(i, remaining_depth - 1)
                 }
             }
-            Token::String(s) => Ok(TreeNodeItem::String(s.clone()).into()),
-            Token::Hex(h) => Ok(TreeNodeItem::HexString(h.clone()).into()),
+            Token::String(s) => Ok(TreeNodeItem::Data(s.clone().into_bytes()).into()),
+            Token::Hex(h) => Ok(TreeNodeItem::Data(h.clone()).into()),
 
             Token::Regex(re) => {
                 let regex_application = self.generate_regex(re);
-                Ok(TreeNodeItem::Regex(regex_application).into())
+                Ok(TreeNodeItem::Data(regex_application.into_bytes()).into())
             }
 
             &Token::Bytes { min, max } => {
-                Ok(TreeNodeItem::HexString(self.generate_byte_sequence(min, max)).into())
+                Ok(TreeNodeItem::Data(self.generate_byte_sequence(min, max)).into())
             }
         }
     }

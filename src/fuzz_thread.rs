@@ -14,9 +14,9 @@ use crate::{
     configuration::FuzzConfig,
     execution::{self},
     fuzzing::Fuzzer,
-    grammar::{generation::TreeNodeItem, Grammar, TreeNode},
+    grammar::Grammar,
     mutation::build_mutator,
-    sample::Sample,
+    sample::{Sample, TreeNode, TreeNodeItem},
     sample_library::Library as LibT,
     state::{Library, State, AM, FUZZER_RUNNNIG},
 };
@@ -43,7 +43,7 @@ fn save_crash(sample: &crate::sample::Sample, path: PathBuf) -> Result<(), std::
     if !dir.exists() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(path, &sample.result)
+    std::fs::write(path, sample.get_folded())
 }
 
 pub fn spawn_fuzzer(
@@ -95,9 +95,12 @@ pub fn spawn_fuzzer(
 
             let initial = generator.generate();
 
-            crate::log!("generated initial sample of size {}", initial.folded.len());
+            crate::log!(
+                "generated initial sample of size {}",
+                initial.get_folded().len()
+            );
 
-            (vec![crate::sample::Sample::new(initial, vec![])], grammar)
+            (vec![initial], grammar)
         }
         crate::configuration::InputOptions::Seeds { seeds: s } => {
             crate::log!("fuzzer started in binary mode");
@@ -114,13 +117,11 @@ pub fn spawn_fuzzer(
                     )
                 })?;
 
-                let root = TreeNodeItem::HexString(content);
+                let root = TreeNodeItem::Data(content);
                 let tree: TreeNode = root.into();
                 let folded_tree = tree.fold_into_sample();
 
-                let sample = Sample::new(folded_tree, vec![]);
-
-                seeds.push(sample);
+                seeds.push(folded_tree);
             }
 
             if seeds.is_empty() {

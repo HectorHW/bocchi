@@ -45,7 +45,7 @@ impl Mutator for MutationChooser {
 
                 let new_patch = mutator.mutate(sample.get_folded());
 
-                let patched = sample.append_patch(new_patch);
+                let patched = sample.apply_patch(new_patch);
 
                 break (patched, (m1, idx));
             }

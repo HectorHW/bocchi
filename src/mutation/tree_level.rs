@@ -1,11 +1,12 @@
+use itertools::Itertools;
 use rand::Rng;
 
 use crate::{
     grammar::{
-        generation::{self, Generator, TreeNodeItem},
-        Grammar, TreeNode,
+        generation::{self, Generator},
+        Grammar,
     },
-    sample::Sample,
+    sample::{Sample, TreeNode, TreeNodeItem},
 };
 
 pub trait MutateTree {
@@ -22,7 +23,7 @@ pub struct TreeRegrow {
 
 type Depth = usize;
 
-pub fn select_random_subtree<'n>(
+pub(crate) fn select_random_subtree<'n>(
     root: &'n mut TreeNode,
     filter: &dyn Fn(&TreeNode) -> bool,
 ) -> Option<(&'n mut TreeNode, Depth)> {
@@ -47,6 +48,23 @@ pub fn select_random_production(root: &mut TreeNode) -> Option<(&mut TreeNode, D
     })
 }
 
+pub fn writeout_terminals(root: &mut TreeNode) -> Vec<&mut TreeNode> {
+    let mut buf = vec![];
+
+    fn filter(node: &TreeNode) -> bool {
+        match &node.item {
+            TreeNodeItem::ProductionApplication(_) => false,
+            TreeNodeItem::Data(_) => true,
+        }
+    }
+
+    writeout_nodes(root, &mut buf, 0, &filter);
+
+    buf.into_iter()
+        .map(|(item, _)| unsafe { item.as_mut().unwrap() })
+        .collect_vec()
+}
+
 fn writeout_nodes(
     node: &mut TreeNode,
     buf: &mut Vec<(*mut TreeNode, Depth)>,
@@ -65,14 +83,14 @@ fn writeout_nodes(
 }
 
 impl MutateTree for TreeRegrow {
-    fn mutate(&self, mut sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
+    fn mutate(&self, sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
         // TODO keep patches in place when mutating
 
-        let tree = &mut sample.tree.tree;
+        let (mut tree, folded) = sample.strip();
 
         'reroll: for _roll in 0..self.descend_rolls {
-            let Some((node, depth)) = select_random_production(tree) else {
-                return Err(sample);
+            let Some((node, depth)) = select_random_production(&mut tree) else {
+                return Err(Sample::recombine(tree, folded));
             };
 
             let remaining_depth = self.depth_limit - depth;
@@ -93,12 +111,12 @@ impl MutateTree for TreeRegrow {
                 size: 0,
             };
 
-            let folded = sample.tree.tree.fold_into_sample();
+            let folded = tree.fold_into_sample();
 
-            return Ok(Sample::new(folded, sample.patches));
+            return Ok(folded);
         }
 
-        Err(sample)
+        Err(Sample::recombine(tree, folded))
     }
 }
 
@@ -108,7 +126,7 @@ pub struct Resample {
 
 impl MutateTree for Resample {
     fn mutate(&self, _sample: Sample, _bank: &[Sample]) -> Result<Sample, Sample> {
-        Ok(Sample::new(self.generator.generate(), vec![]))
+        Ok(self.generator.generate())
     }
 }
 

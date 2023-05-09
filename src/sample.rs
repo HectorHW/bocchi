@@ -1,184 +1,201 @@
-use std::io::Write;
+use std::{io::Write, ops::Range};
 
-use crate::sample_library::SizeScore;
+use crate::{mutation::tree_level::writeout_terminals, sample_library::SizeScore};
 
 #[derive(Clone, Debug)]
-pub enum Patch {
-    Replacement { position: usize, content: Vec<u8> },
-
-    Xor { position: usize, content: Vec<u8> },
-
-    Erasure { position: usize, size: usize },
-
-    Insertion { position: usize, content: Vec<u8> },
+pub struct Patch {
+    pub position: usize,
+    pub kind: PatchKind,
 }
 
-impl Patch {
-    fn apply(&self, target: &mut Vec<u8>) {
+#[derive(Clone, Debug)]
+pub enum PatchKind {
+    Replacement(Vec<u8>),
+
+    Erasure(usize),
+
+    Insertion(Vec<u8>),
+}
+
+fn intersect_intervals(first: (usize, usize), second: (usize, usize)) -> Option<Range<usize>> {
+    if first.0 > second.1 || second.0 > first.1 {
+        return None;
+    }
+
+    Some(first.0.max(second.0)..first.1.min(second.1))
+}
+
+#[derive(Clone, Debug)]
+pub struct ProductionApplication {
+    pub rule_name: String,
+    pub production_variant: usize,
+    pub items: Vec<TreeNode>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TreeNode {
+    pub start: usize,
+    pub size: usize,
+    pub item: TreeNodeItem,
+}
+
+#[derive(Clone, Debug)]
+pub enum TreeNodeItem {
+    ProductionApplication(ProductionApplication),
+    Data(Vec<u8>),
+}
+
+impl TreeNodeItem {
+    fn find_tree_span(&self) -> usize {
         match self {
-            Patch::Replacement { position, content } => {
-                let start = *position;
-                let end = (position + content.len()).min(target.len());
+            TreeNodeItem::ProductionApplication(p) => p.items.iter().map(|item| item.size).sum(),
+            TreeNodeItem::Data(data) => data.len(),
+        }
+    }
 
-                let allowed_size = end - start;
-
-                target[start..end].copy_from_slice(&content[0..allowed_size]);
-            }
-            Patch::Xor { position, content } => {
-                let start = *position;
-                let end = (position + content.len()).min(target.len());
-
-                let allowed_size = end - start;
-
-                for byte_pos in 0..allowed_size {
-                    target[start + byte_pos] ^= content[byte_pos];
-                }
-            }
-            &Patch::Erasure { position, size } => {
-                let mut new = target[0..position.min(target.len())].to_vec();
-
-                if position + size < target.len() {
-                    new.write_all(&target[(position + size)..target.len()])
-                        .unwrap();
-                }
-                *target = new;
-            }
-
-            Patch::Insertion { position, content } => {
-                todo!()
-            }
+    fn with_offset(self, offset: usize) -> TreeNode {
+        TreeNode {
+            start: offset,
+            size: self.find_tree_span(),
+            item: self,
         }
     }
 }
 
-enum PatchPartition {
-    Unaffected,
-    Left(usize),
-    Right(usize),
-    Split { head: usize, tail: usize },
-    Overshadowed,
-}
-
-fn partition_patch_over_hole(
-    start: usize,
-    size: usize,
-    hole_start: usize,
-    hole_size: usize,
-) -> PatchPartition {
-    if start + size < hole_start || hole_start + hole_size < start {
-        return PatchPartition::Unaffected;
-    }
-
-    if start < hole_start && start + size < hole_start + hole_size {
-        return PatchPartition::Left(hole_start - start);
-    }
-
-    if start >= hole_start && start + size > hole_start + hole_size {
-        return PatchPartition::Right(start + size - hole_start - hole_size);
-    }
-
-    if start >= hole_start && start + size <= hole_start + hole_size {
-        return PatchPartition::Overshadowed;
-    }
-
-    PatchPartition::Split {
-        head: hole_start - start,
-        tail: start + size - hole_start - hole_size,
-    }
-}
-
-pub fn remap_patches(
-    patches: Vec<Patch>,
-    mut sample_size: usize,
-    mut hole_start: usize,
-    hole_size: usize,
-) -> Vec<Patch> {
-    let mut result = vec![];
-
-    for patch in patches {
-        match patch {
-            Patch::Replacement { .. } | Patch::Xor { .. } => {}
-
-            Patch::Erasure {
-                mut position,
-                mut size,
-            } => {
-                match partition_patch_over_hole(position, size, hole_start, hole_size) {
-                    PatchPartition::Unaffected => {
-                        result.push(patch);
-                    }
-                    PatchPartition::Left(left) => result.push(Patch::Erasure {
-                        position,
-                        size: left,
-                    }),
-                    PatchPartition::Right(right) => result.push(Patch::Erasure {
-                        position: position + size - right,
-                        size: right,
-                    }),
-                    PatchPartition::Split { head, tail } => todo!(),
-                    PatchPartition::Overshadowed => {
-                        continue;
-                    }
-                }
-
-                if position < hole_start {
-                    hole_start -= size;
-                }
-                if position + size < sample_size {
-                    sample_size -= size;
-                } else {
-                    sample_size = position;
-                }
-            }
-
-            Patch::Insertion { position, content } => todo!(),
+impl From<TreeNodeItem> for TreeNode {
+    fn from(value: TreeNodeItem) -> Self {
+        TreeNode {
+            start: 0,
+            size: value.find_tree_span(),
+            item: value,
         }
     }
+}
 
-    result
+impl TreeNode {
+    /// write this tree to buffer setting indices in the process
+    pub fn fold(&mut self, buffer: &mut Vec<u8>) {
+        let before = buffer.len();
+        match &mut self.item {
+            TreeNodeItem::ProductionApplication(pa) => {
+                for item in &mut pa.items {
+                    item.fold(buffer);
+                }
+            }
+            TreeNodeItem::Data(data) => {
+                buffer.write_all(data).unwrap();
+            }
+        }
+        self.start = before;
+        self.size = buffer.len() - before;
+    }
+
+    pub fn fold_into_sample(mut self) -> GrammarSample {
+        let mut buf = vec![];
+
+        self.fold(&mut buf);
+
+        GrammarSample {
+            tree: self,
+            folded: buf,
+        }
+    }
+}
+
+impl From<TreeNode> for GrammarSample {
+    fn from(mut val: TreeNode) -> Self {
+        let mut folded = vec![];
+        val.fold(&mut folded);
+        GrammarSample { tree: val, folded }
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct Sample {
-    pub tree: crate::grammar::GrammarSample,
-    pub patches: Vec<Patch>,
-    pub result: Vec<u8>,
+pub struct GrammarSample {
+    tree: TreeNode,
+    folded: Vec<u8>,
+}
+
+pub type Sample = GrammarSample;
+
+fn apply_patch(data: &mut Vec<u8>, data_pos: usize, patch: &Patch) {
+    if data.is_empty() {
+        return;
+    }
+
+    match &patch.kind {
+        PatchKind::Replacement(content) => {
+            let Some(span_in_data) = intersect_intervals(
+                (data_pos, data_pos + data.len()),
+                (patch.position, patch.position + content.len()),
+            ) else {
+                return;
+            };
+
+            let span_in_patch = (patch.position - span_in_data.start)
+                ..(patch.position - span_in_data.start + span_in_data.len());
+
+            data[span_in_data].copy_from_slice(&content[span_in_patch]);
+        }
+        PatchKind::Erasure(size) => {
+            let Some(span_in_data) = intersect_intervals(
+                (data_pos, data_pos + data.len()),
+                (patch.position, patch.position + size),
+            ) else {
+                return;
+            };
+
+            let mut prefix = data[..span_in_data.start].to_owned();
+            let mut suffix = data[span_in_data.end..].to_owned();
+
+            let remaining_data = {
+                prefix.append(&mut suffix);
+                prefix
+            };
+
+            *data = remaining_data;
+        }
+        PatchKind::Insertion(content) => {
+            if patch.position >= data_pos && patch.position < data_pos + data.len() {
+                let mut suffix = data.split_off(patch.position);
+
+                let mut insertion = content.clone();
+
+                data.append(&mut insertion);
+                data.append(&mut suffix);
+            }
+        }
+    }
 }
 
 impl Sample {
-    pub fn new(tree: crate::grammar::GrammarSample, patches: Vec<Patch>) -> Self {
-        let mut result = tree.folded.clone();
-
-        for patch in &patches {
-            patch.apply(&mut result);
-        }
-
-        Sample {
-            tree,
-            patches,
-            result,
-        }
-    }
-
     pub fn get_folded(&self) -> &[u8] {
-        &self.result
+        &self.folded
     }
 
-    pub fn append_patch(self, patch: Patch) -> Self {
-        Self::new(self.tree, {
-            let mut patches = self.patches;
-            patches.push(patch);
-            patches
-        })
+    pub fn strip(self) -> (TreeNode, Vec<u8>) {
+        (self.tree, self.folded)
     }
 
-    pub fn strip(self) -> (crate::grammar::GrammarSample, Vec<Patch>) {
-        (self.tree, self.patches)
+    pub fn recombine(tree: TreeNode, folded: Vec<u8>) -> Self {
+        Self { tree, folded }
+    }
+
+    pub fn apply_patch(mut self, patch: Patch) -> Self {
+        for terminal in writeout_terminals(&mut self.tree) {
+            let TreeNode{item: TreeNodeItem::Data(data), start,..} = terminal else {
+                unreachable!()
+            };
+
+            apply_patch(data, *start, &patch)
+        }
+
+        self.tree.fold_into_sample()
     }
 }
 
 impl SizeScore for Sample {
     fn get_size_score(&self) -> f64 {
-        self.result.len() as f64
+        self.folded.len() as f64
     }
 }
