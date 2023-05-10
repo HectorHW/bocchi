@@ -22,7 +22,17 @@ fn intersect_intervals(first: (usize, usize), second: (usize, usize)) -> Option<
         return None;
     }
 
-    Some(first.0.max(second.0)..first.1.min(second.1))
+    let interval = first.0.max(second.0)..first.1.min(second.1);
+
+    if interval.is_empty() {
+        None
+    } else {
+        Some(interval)
+    }
+}
+
+fn remap_interval_to_segment(range: Range<usize>, data_start: usize) -> Range<usize> {
+    range.start - data_start..range.end - data_start
 }
 
 #[derive(Clone, Debug)]
@@ -132,10 +142,8 @@ fn apply_patch(data: &mut Vec<u8>, data_pos: usize, patch: &Patch) {
                 return;
             };
 
-            let span_in_patch = (patch.position - span_in_data.start)
-                ..(patch.position - span_in_data.start + span_in_data.len());
-
-            data[span_in_data].copy_from_slice(&content[span_in_patch]);
+            data[remap_interval_to_segment(span_in_data.clone(), data_pos)]
+                .copy_from_slice(&content[remap_interval_to_segment(span_in_data, patch.position)]);
         }
         PatchKind::Erasure(size) => {
             let Some(span_in_data) = intersect_intervals(
@@ -145,8 +153,10 @@ fn apply_patch(data: &mut Vec<u8>, data_pos: usize, patch: &Patch) {
                 return;
             };
 
-            let mut prefix = data[..span_in_data.start].to_owned();
-            let mut suffix = data[span_in_data.end..].to_owned();
+            let mut prefix =
+                data[..remap_interval_to_segment(span_in_data.clone(), data_pos).start].to_owned();
+            let mut suffix =
+                data[remap_interval_to_segment(span_in_data, data_pos).end..].to_owned();
 
             let remaining_data = {
                 prefix.append(&mut suffix);
@@ -157,7 +167,9 @@ fn apply_patch(data: &mut Vec<u8>, data_pos: usize, patch: &Patch) {
         }
         PatchKind::Insertion(content) => {
             if patch.position >= data_pos && patch.position < data_pos + data.len() {
-                let mut suffix = data.split_off(patch.position);
+                let span = remap_interval_to_segment(patch.position..patch.position + 1, data_pos);
+
+                let mut suffix = data.split_off(span.start);
 
                 let mut insertion = content.clone();
 
