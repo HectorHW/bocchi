@@ -100,6 +100,13 @@ pub fn spawn_fuzzer(
                 initial.get_folded().len()
             );
 
+            if config.output.debug {
+                println!(
+                    "initial sample: {}",
+                    String::from_utf8_lossy(initial.get_folded())
+                );
+            }
+
             (vec![initial], grammar)
         }
         crate::configuration::InputOptions::Seeds { seeds: s } => {
@@ -136,7 +143,7 @@ pub fn spawn_fuzzer(
         }
     };
 
-    Ok(thread::spawn(move || {
+    let closure = move || {
         let mutator = build_mutator(config, &grammar);
 
         let evaluator = execution::TraceEvaluator::new(mapping, config.binary.pass_style);
@@ -160,6 +167,14 @@ pub fn spawn_fuzzer(
 
             state.tested_samples += 1;
             state.executions.push(Instant::now());
+
+            if config.output.debug {
+                println!(
+                    "got {:?} after runnning {}",
+                    result.status,
+                    String::from_utf8_lossy(result.sample.get_folded())
+                );
+            }
 
             match result.status {
                 crate::fuzzing::RunResultStatus::Nothing => {}
@@ -212,5 +227,13 @@ pub fn spawn_fuzzer(
         }
 
         Ok(())
-    }))
+    };
+
+    if config.output.debug {
+        closure().unwrap();
+
+        Ok(thread::spawn(|| Ok(())))
+    } else {
+        Ok(thread::spawn(closure))
+    }
 }

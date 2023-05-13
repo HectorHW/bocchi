@@ -68,7 +68,11 @@ fn main() {
         }
     };
 
-    let ui_errors = serve_ui(library, state, config);
+    let ui_errors = if !config.output.debug {
+        serve_ui(library, state, config)
+    } else {
+        Ok(())
+    };
 
     unsafe { FUZZER_RUNNNIG.store(false, std::sync::atomic::Ordering::SeqCst) };
 

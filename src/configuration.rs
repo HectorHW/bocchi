@@ -70,14 +70,19 @@ impl ExitCodeFilter {
 pub struct OutputOptions {
     #[serde(default = "default_output_dir")]
     pub directory: String,
+
+    #[serde(default)]
+    pub debug: bool,
 }
 
 impl Default for OutputOptions {
     fn default() -> Self {
         Self {
             directory: "output".to_string(),
+            debug: false,
         }
     }
+}
 
 fn default_output_dir() -> String {
     "output".to_string()

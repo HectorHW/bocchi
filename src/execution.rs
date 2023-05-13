@@ -288,15 +288,15 @@ impl FunctionTracer {
 
         let mut trajectory: R = R::default();
 
-        let mut result = None;
-
         while tracer.cont(ptracer::ContinueMode::Default).is_ok() {
             match tracer.event() {
-                WaitStatus::Exited(_pid, code) => result = Some(ExecResult::Code(*code)),
-                WaitStatus::Signaled(_pid, _signal, _coredump) => {
-                    result = Some(ExecResult::Signal);
+                WaitStatus::Exited(_pid, code) => {
+                    trajectory.add_exit(ExecResult::Code(*code));
                 }
-                _ => {}
+                WaitStatus::Signaled(_pid, _signal, _coredump) => {
+                    trajectory.add_exit(ExecResult::Signal);
+                }
+                e => {}
             }
             let adjusted_rip = tracer.registers().rip as usize - self.binary.base_offset.unwrap();
 
@@ -308,10 +308,6 @@ impl FunctionTracer {
                     .unwrap();
             }
         }
-
-        assert!(result.is_some(), "child did not finish executing");
-
-        trajectory.add_exit(result.unwrap());
 
         Ok(trajectory)
     }
