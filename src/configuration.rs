@@ -68,6 +68,7 @@ impl ExitCodeFilter {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct OutputOptions {
+    #[serde(default = "default_output_dir")]
     pub directory: String,
 }
 
@@ -77,6 +78,9 @@ impl Default for OutputOptions {
             directory: "output".to_string(),
         }
     }
+
+fn default_output_dir() -> String {
+    "output".to_string()
 }
 
 pub enum ConfigReadError {
@@ -85,7 +89,7 @@ pub enum ConfigReadError {
 }
 
 pub fn load_config<P: AsRef<std::path::Path>>(path: P) -> Result<FuzzConfig, ConfigReadError> {
-    let config = std::fs::read_to_string(path).map_err(ConfigReadError::ReadError)?;
+    let config: String = std::fs::read_to_string(path).map_err(ConfigReadError::ReadError)?;
 
     toml::from_str::<FuzzConfig>(&config).map_err(ConfigReadError::ParseError)
 }
