@@ -35,6 +35,7 @@ macro_rules! log{
 }
 
 pub(crate) use log;
+use serde_derive::Serialize;
 
 pub fn pull_messages(n: usize) -> Vec<String> {
     let mut items = {
@@ -44,4 +45,17 @@ pub fn pull_messages(n: usize) -> Vec<String> {
     };
     items.reverse();
     items
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum NewPathKind {
+    ExitCode(i32),
+    Crash,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum FuzzingEvent {
+    NewPath { kind: NewPathKind, trace_id: String },
+
+    SizeImprovement { trace_id: String, delta: usize },
 }

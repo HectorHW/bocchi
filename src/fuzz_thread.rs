@@ -1,4 +1,5 @@
 use std::{
+    io::Write,
     path::PathBuf,
     process,
     thread::{self, JoinHandle},
@@ -15,6 +16,7 @@ use crate::{
     execution::{self},
     fuzzing::Fuzzer,
     grammar::Grammar,
+    log::{log, FuzzingEvent, NewPathKind},
     mutation::build_mutator,
     sample::{TreeNode, TreeNodeItem},
     sample_library::Library as LibT,
@@ -50,7 +52,7 @@ pub fn spawn_fuzzer(
     config: &'static FuzzConfig,
     library: AM<Library>,
     state: AM<State>,
-) -> Result<JoinHandle<Result<(), std::io::Error>>, anyhow::Error> {
+) -> Result<JoinHandle<Result<(), anyhow::Error>>, anyhow::Error> {
     let path = config.binary.path.clone();
 
     let mapping = match analysys::analyze_binary(path) {
@@ -153,12 +155,21 @@ pub fn spawn_fuzzer(
             fuzzer.put_seed(seed).unwrap();
         }
 
+        let mut output_file = match std::fs::File::create("fuzzing.log") {
+            Ok(f) => f,
+            Err(e) => {
+                log!("failure opening event log file: {}", e);
+                panic!("failure opening event log file: {}", e);
+            }
+        };
+
         while unsafe { FUZZER_RUNNNIG.load(std::sync::atomic::Ordering::SeqCst) } {
             let result = match fuzzer.run_once() {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("error executing : {e:?}");
-                    panic!("encuntered error in fuzzer: {e:?}");
+                    let message = format!("error executing : {e:?}");
+                    log!("{}", message);
+                    anyhow::bail!(message)
                 }
             };
 
@@ -180,20 +191,42 @@ pub fn spawn_fuzzer(
                 crate::fuzzing::RunResultStatus::Nothing => {}
                 crate::fuzzing::RunResultStatus::New => {
                     state.last_new_path = Some(Instant::now());
+
+                    let name = get_unique_name();
+
+                    library.add_name(&result.trace, name.clone());
+
                     if let execution::ExecResult::Signal = result.trace.result {
                         state.last_unique_crash = Some(Instant::now());
 
-                        let name = get_unique_name();
-
                         let path = get_crash_path(config, &name);
-
-                        library.add_name(&result.trace, name.clone());
 
                         save_crash(&result.sample, path.clone())?;
                         crate::log!(
                             "found new crash and saved it as {}",
                             path.into_os_string().into_string().unwrap()
                         );
+                    }
+
+                    let event = FuzzingEvent::NewPath {
+                        kind: match result.trace.result {
+                            execution::ExecResult::Code(c) => NewPathKind::ExitCode(c),
+                            execution::ExecResult::Signal => NewPathKind::Crash,
+                        },
+                        trace_id: name,
+                    };
+
+                    match writeln!(
+                        &mut output_file,
+                        "{}",
+                        serde_json::to_string(&event).unwrap()
+                    ) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            let message = format!("error writing to log file: {e}");
+                            log!("{}", message);
+                            anyhow::bail!(message);
+                        }
                     }
                 }
                 crate::fuzzing::RunResultStatus::SizeImprovement(change) => {
@@ -213,6 +246,24 @@ pub fn spawn_fuzzer(
 
                         save_crash(&result.sample, path.clone())?;
                         crate::log!("found smaller example for crash {name} (-{change})");
+
+                        let event = FuzzingEvent::SizeImprovement {
+                            trace_id: name,
+                            delta: change,
+                        };
+
+                        match writeln!(
+                            &mut output_file,
+                            "{}",
+                            serde_json::to_string(&event).unwrap()
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                let message = format!("error writing to log file: {e}");
+                                log!("{}", message);
+                                anyhow::bail!(message);
+                            }
+                        }
                     }
                 }
             }
