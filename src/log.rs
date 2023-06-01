@@ -1,4 +1,5 @@
 use std::sync::Mutex;
+use std::time::Instant;
 
 use chrono::{Datelike, Local, Timelike};
 use itertools::Itertools;
@@ -54,7 +55,13 @@ pub enum NewPathKind {
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub enum FuzzingEvent {
+pub struct FuzzingEvent {
+    pub time_as_seconds: f64,
+    pub kind: FuzzingEventKind,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum FuzzingEventKind {
     NewPath { kind: NewPathKind, trace_id: String },
 
     SizeImprovement { trace_id: String, delta: usize },

@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     process,
     thread::{self, JoinHandle},
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use anyhow::{anyhow, Context};
@@ -16,7 +16,7 @@ use crate::{
     execution::{self},
     fuzzing::Fuzzer,
     grammar::Grammar,
-    log::{log, FuzzingEvent, NewPathKind},
+    log::{log, FuzzingEvent, FuzzingEventKind, NewPathKind},
     mutation::build_mutator,
     sample::{TreeNode, TreeNodeItem},
     sample_library::Library as LibT,
@@ -26,7 +26,7 @@ use crate::{
 fn get_unique_name() -> String {
     let mut rng = rand::thread_rng();
 
-    (0..6).map(|_| format!("{:x}", rng.gen::<u8>())).collect()
+    (0..8).map(|_| format!("{:x}", rng.gen::<u8>())).collect()
 }
 
 fn get_crash_path(config: &'static FuzzConfig, name: &str) -> PathBuf {
@@ -208,12 +208,18 @@ pub fn spawn_fuzzer(
                         );
                     }
 
-                    let event = FuzzingEvent::NewPath {
-                        kind: match result.trace.result {
-                            execution::ExecResult::Code(c) => NewPathKind::ExitCode(c),
-                            execution::ExecResult::Signal => NewPathKind::Crash,
+                    let event = FuzzingEvent {
+                        time_as_seconds: SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs_f64(),
+                        kind: FuzzingEventKind::NewPath {
+                            kind: match result.trace.result {
+                                execution::ExecResult::Code(c) => NewPathKind::ExitCode(c),
+                                execution::ExecResult::Signal => NewPathKind::Crash,
+                            },
+                            trace_id: name,
                         },
-                        trace_id: name,
                     };
 
                     match writeln!(
@@ -247,9 +253,15 @@ pub fn spawn_fuzzer(
                         save_crash(&result.sample, path.clone())?;
                         crate::log!("found smaller example for crash {name} (-{change})");
 
-                        let event = FuzzingEvent::SizeImprovement {
-                            trace_id: name,
-                            delta: change,
+                        let event = FuzzingEvent {
+                            time_as_seconds: SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs_f64(),
+                            kind: FuzzingEventKind::SizeImprovement {
+                                trace_id: name,
+                                delta: change,
+                            },
                         };
 
                         match writeln!(
