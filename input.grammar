@@ -1,3 +1,0 @@
-depth_limit=100
-
-root -> re("[a-z]+" size_limit=80);

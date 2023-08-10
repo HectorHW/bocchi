@@ -3,7 +3,6 @@ path = "samples/exif/exif"
 pass_style = "file"
 
 [input]
-#grammar = "samples/exif/input.grammar"
 seeds = "samples/exif/examples"
 
 [output]
