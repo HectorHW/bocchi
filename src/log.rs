@@ -49,8 +49,9 @@ pub fn pull_messages(n: usize) -> Vec<String> {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type")]
 pub enum NewPathKind {
-    ExitCode(i32),
+    ExitCode { code: i32 },
     Crash,
 }
 
@@ -61,6 +62,7 @@ pub struct FuzzingEvent {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type")]
 pub enum FuzzingEventKind {
     NewPath { kind: NewPathKind, trace_id: String },
 

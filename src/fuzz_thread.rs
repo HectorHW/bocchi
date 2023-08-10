@@ -215,7 +215,7 @@ pub fn spawn_fuzzer(
                             .as_secs_f64(),
                         kind: FuzzingEventKind::NewPath {
                             kind: match result.trace.result {
-                                execution::ExecResult::Code(c) => NewPathKind::ExitCode(c),
+                                execution::ExecResult::Code(code) => NewPathKind::ExitCode { code },
                                 execution::ExecResult::Signal => NewPathKind::Crash,
                             },
                             trace_id: name,
