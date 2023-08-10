@@ -194,6 +194,18 @@ impl Sample {
     }
 
     pub fn apply_patch(mut self, patch: Patch) -> Self {
+        if self.folded.is_empty() && matches!(patch.kind, PatchKind::Insertion(..)) {
+            let Some( TreeNode { start: _, size: _, item: TreeNodeItem::Data(data) } ) = writeout_terminals(&mut self.tree).into_iter().next() else {
+                unreachable!()
+            };
+
+            *data = match patch.kind {
+                PatchKind::Insertion(data) => data,
+                _ => unreachable!(),
+            };
+            return self.tree.fold_into_sample();
+        }
+
         for terminal in writeout_terminals(&mut self.tree) {
             let TreeNode{item: TreeNodeItem::Data(data), start,..} = terminal else {
                 unreachable!()
